@@ -1,0 +1,23 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# 项目排除路径
+/core/common/build/
+/core/data/build/
+/core/designsystem/build/
+/core/model/build/
+/feature/map/build/
+/feature/routing/build/
