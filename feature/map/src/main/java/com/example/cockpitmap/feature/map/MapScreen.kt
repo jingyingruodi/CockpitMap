@@ -36,11 +36,17 @@ import com.example.cockpitmap.core.model.GeoLocation
 private const val TAG = "MapRenderScreen"
 
 /**
- * 高德地图渲染核心。
- * 
- * [功能微调]：
- * 1. 影子图标校验：增加了对 0.0 坐标的过滤，防止卸载重装后的图标闪现。
- * 2. 状态提示全覆盖：无论是否有缓存，在 GPS 锁定前均显示定位提示。
+ * 封装高德地图内置样式模式
+ */
+enum class CustomMapStyle(val type: Int) {
+    NORMAL(AMap.MAP_TYPE_NORMAL),   // 标准白天
+    NIGHT(AMap.MAP_TYPE_NIGHT),     // 科技感夜间 (车机默认)
+    SATELLITE(AMap.MAP_TYPE_SATELLITE), // 卫星实景
+    NAVI(AMap.MAP_TYPE_NAVI)        // 纯净导航
+}
+
+/**
+ * 高德地图渲染核心组件
  */
 @Composable
 fun MapRenderScreen(
@@ -55,11 +61,8 @@ fun MapRenderScreen(
     var isMapConfigured by remember { mutableStateOf(false) }
     var hasAutoCentered by remember { mutableStateOf(false) }
     var isInitialMoveDone by remember { mutableStateOf(false) }
-    
-    // GPS 锁定状态
     var isGpsLocked by remember { mutableStateOf(false) }
 
-    // 持有影子标记引用
     val ghostMarkerState = remember { mutableStateOf<Marker?>(null) }
 
     val mapView = remember { 
@@ -68,16 +71,12 @@ fun MapRenderScreen(
         MapView(context).apply { onCreate(null) }
     }
 
-    // 缓存位置应用逻辑
     LaunchedEffect(initialLocation) {
-        // 【关键修复】：增加 latitude != 0.0 校验，防止卸载重装后读取到 DataStore 初始零值导致的图标闪现
         if (initialLocation != null && initialLocation.latitude != 0.0 && !isInitialMoveDone) {
             val aMap = mapView.map
             val latLng = LatLng(initialLocation.latitude, initialLocation.longitude)
-            
             aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
             
-            // 部署影子图标
             ghostMarkerState.value?.remove()
             val marker = aMap.addMarker(
                 MarkerOptions()
@@ -119,19 +118,13 @@ fun MapRenderScreen(
                     
                     aMap.setOnMyLocationChangeListener { location ->
                         if (location != null && location.latitude != 0.0) {
-                            // 卫星锁定成功
                             isGpsLocked = true
-                            
-                            // 销毁影子
                             ghostMarkerState.value?.let {
-                                Log.i(TAG, "GPS Fix: 移除影子锚点")
                                 it.remove()
                                 ghostMarkerState.value = null
                             }
-
                             val geo = GeoLocation(location.latitude, location.longitude, "当前位置")
                             onLocationChanged(geo)
-
                             if (!hasAutoCentered) {
                                 aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(geo.latitude, geo.longitude), 15f))
                                 hasAutoCentered = true
@@ -145,8 +138,6 @@ fun MapRenderScreen(
             }
         )
 
-        // --- 搜星提示条 ---
-        // 【修改逻辑】：只要 GPS 未锁定，且地图已基本就绪，就显示提示（覆盖无缓存启动场景）
         AnimatedVisibility(
             visible = !isGpsLocked && isMapConfigured,
             enter = fadeIn(),
@@ -188,22 +179,28 @@ private fun setupAMapHmi(aMap: AMap) {
         }
         setMyLocationStyle(myLocationStyle)
         isMyLocationEnabled = true 
-        uiSettings.apply {
-            isZoomControlsEnabled = false
-            isMyLocationButtonEnabled = false 
-            isCompassEnabled = true
-        }
+        uiSettings.isZoomControlsEnabled = false
+        uiSettings.isMyLocationButtonEnabled = false 
+        uiSettings.isCompassEnabled = true
+        // 车机默认推荐：夜间模式
         mapType = AMap.MAP_TYPE_NIGHT
     }
 }
 
+/**
+ * 地图控制接口：新增样式切换
+ */
 interface MapController {
     fun zoomIn()
     fun zoomOut()
     fun moveTo(location: GeoLocation)
     fun locateMe()
+    fun setMapStyle(style: CustomMapStyle)
 }
 
+/**
+ * 地图控制器具体实现
+ */
 class AMapController(private val aMap: AMap) : MapController {
     override fun zoomIn() { aMap.animateCamera(CameraUpdateFactory.zoomIn()) }
     override fun zoomOut() { aMap.animateCamera(CameraUpdateFactory.zoomOut()) }
@@ -215,5 +212,9 @@ class AMapController(private val aMap: AMap) : MapController {
         if (location != null && location.latitude != 0.0) {
             aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(location.latitude, location.longitude), 15f))
         }
+    }
+    
+    override fun setMapStyle(style: CustomMapStyle) {
+        aMap.mapType = style.type
     }
 }
