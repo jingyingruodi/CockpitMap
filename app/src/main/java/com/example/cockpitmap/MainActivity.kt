@@ -29,9 +29,6 @@ import kotlinx.coroutines.launch
 
 /**
  * 应用程序主 Activity。
- * 
- * [加固说明]：
- * 按照 [AI_RULES.md] 规范，所有的 UI 组件已迁移至 :core:designsystem。
  */
 class MainActivity : ComponentActivity() {
     
@@ -93,9 +90,10 @@ fun MainScreen(
     var mapController by remember { mutableStateOf<MapController?>(null) }
     val scope = rememberCoroutineScope()
     
+    // 严格对应 CustomMapStyle 的定义顺序
     val styles = CustomMapStyle.entries.toTypedArray()
-    val styleNames = listOf("标准模式", "夜间模式", "卫星模式", "导航模式")
-    var currentStyleIndex by remember { mutableIntStateOf(1) } 
+    val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
+    var currentStyleIndex by remember { mutableIntStateOf(2) } // 默认显示 NIGHT (Index 2)
     
     var showStyleHint by remember { mutableStateOf(false) }
     var hintText by remember { mutableStateOf("") }
@@ -111,7 +109,6 @@ fun MainScreen(
                 onControllerReady = { controller -> mapController = controller }
             )
 
-            // 应用标准车机 Surface 组件
             AnimatedVisibility(
                 visible = showStyleHint,
                 enter = fadeIn() + expandVertically(),
@@ -159,7 +156,6 @@ fun QuickActions(
     onSwitchStyle: () -> Unit
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        // 使用标准车机悬浮按钮组件
         CockpitFloatingButton(onClick = onZoomIn, icon = { Text("+") })
         Spacer(Modifier.height(12.dp))
         CockpitFloatingButton(onClick = onZoomOut, icon = { Text("-") })
