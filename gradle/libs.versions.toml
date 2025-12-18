@@ -10,6 +10,9 @@ material = "1.13.0"
 activity = "1.12.1"
 constraintlayout = "2.2.1"
 composeBom = "2024.10.01"
+# 使用更稳定、分发更广的高德 SDK 版本
+amapMap = "9.8.2"
+amapLocation = "6.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -26,6 +29,9 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+# 高德地图相关
+amap-maps = { group = "com.amap.api", name = "3dmap", version.ref = "amapMap" }
+amap-location = { group = "com.amap.api", name = "location", version.ref = "amapLocation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -14,24 +14,29 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // 1. 优先使用阿里云镜像（国内访问最稳定）
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/central") }
+        maven { url = uri("https://maven.aliyun.com/repository/jcenter") }
+        
+        // 2. Google 和 MavenCentral 备用
         google()
         mavenCentral()
+        
+        // 3. 高德官方仓库（如果域名解析失败会跳过）
+        maven { url = uri("https://mavensync.amap.com/maven/repository/") }
     }
 }
 
 rootProject.name = "CockpitMap"
 
-// 应用程序入口
 include(":app")
-
-// 特能模块 (Features)
-include(":feature:map")      // 地图显示与基本交互
-include(":feature:routing")  // 路径规划与搜索
-include(":feature:voice")    // 语音交互功能
-
-// 核心通用模块 (Core)
-include(":core:common")      // 通用工具类、基类
-include(":core:designsystem") // 车机 UI 组件库
-include(":core:data")        // 数据层 (Repository, API, DB)
-include(":core:model")       // 核心业务模型
-include(":core:network")     // 网络请求封装
+include(":feature:map")
+include(":feature:routing")
+include(":feature:voice")
+include(":core:common")
+include(":core:designsystem")
+include(":core:data")
+include(":core:model")
+include(":core:network")
