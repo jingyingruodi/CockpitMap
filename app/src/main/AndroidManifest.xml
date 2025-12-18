@@ -28,9 +28,16 @@
             android:name="com.amap.api.v2.apikey"
             android:value="YOUR_AMAP_KEY_HERE" />
 
+        <!-- 
+             MainActivity 配置：
+             1. android:screenOrientation="sensorLandscape" 强行开启横屏模式（适配车机/平板）。
+             2. android:configChanges 确保旋转或屏幕大小改变时不重启 Activity，保持地图渲染稳定。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:theme="@style/Theme.CockpitMap">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
