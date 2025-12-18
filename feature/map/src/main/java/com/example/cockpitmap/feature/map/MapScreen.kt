@@ -36,17 +36,22 @@ import com.example.cockpitmap.core.model.GeoLocation
 private const val TAG = "MapRenderScreen"
 
 /**
- * 封装高德地图内置样式模式
+ * 高德内置地图样式映射枚举
  */
 enum class CustomMapStyle(val type: Int) {
-    NORMAL(AMap.MAP_TYPE_NORMAL),   // 标准白天
-    NIGHT(AMap.MAP_TYPE_NIGHT),     // 科技感夜间 (车机默认)
-    SATELLITE(AMap.MAP_TYPE_SATELLITE), // 卫星实景
-    NAVI(AMap.MAP_TYPE_NAVI)        // 纯净导航
+    NORMAL(AMap.MAP_TYPE_NORMAL),   // 标准白天模式
+    NIGHT(AMap.MAP_TYPE_NIGHT),     // 护眼黑夜模式 (车机推荐)
+    SATELLITE(AMap.MAP_TYPE_SATELLITE), // 卫星实景模式
+    NAVI(AMap.MAP_TYPE_NAVI)        // 纯净导航模式
 }
 
 /**
- * 高德地图渲染核心组件
+ * [MapRenderScreen] 地图渲染核心组件。
+ * 
+ * 职责：
+ * 1. 管理 AMap SDK 的生命周期同步。
+ * 2. 调度“影子定位”逻辑，在搜星成功前展示缓存位置。
+ * 3. 响应外部控制句柄 [MapController]。
  */
 @Composable
 fun MapRenderScreen(
@@ -58,39 +63,48 @@ fun MapRenderScreen(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     
+    // 渲染状态控制
     var isMapConfigured by remember { mutableStateOf(false) }
     var hasAutoCentered by remember { mutableStateOf(false) }
     var isInitialMoveDone by remember { mutableStateOf(false) }
     var isGpsLocked by remember { mutableStateOf(false) }
 
+    // 持有启动时的影子标记点 (Marker)，以便在真实定位后精准销毁
     val ghostMarkerState = remember { mutableStateOf<Marker?>(null) }
 
+    // 初始化 MapView 实例，并与 remember 绑定，确保仅创建一次
     val mapView = remember { 
         MapsInitializer.updatePrivacyShow(context, true, true)
         MapsInitializer.updatePrivacyAgree(context, true)
         MapView(context).apply { onCreate(null) }
     }
 
+    // [启动回显效应]：监听 DataStore 异步加载的数据
     LaunchedEffect(initialLocation) {
+        // 增加 latitude != 0.0 严苛校验，防止空数据导致的影子点闪现
         if (initialLocation != null && initialLocation.latitude != 0.0 && !isInitialMoveDone) {
             val aMap = mapView.map
             val latLng = LatLng(initialLocation.latitude, initialLocation.longitude)
+            
+            // 1. 瞬间移动镜头至上次位置
             aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
             
-            ghostMarkerState.value?.remove()
+            // 2. 部署影子图标：Azure 蓝色半透明样式
+            ghostMarkerState.value?.remove() 
             val marker = aMap.addMarker(
                 MarkerOptions()
                     .position(latLng)
                     .anchor(0.5f, 0.5f)
-                    .alpha(0.6f)
+                    .alpha(0.6f) 
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
-                    .title("记忆位置")
+                    .title("上次记忆位置")
             )
             ghostMarkerState.value = marker
             isInitialMoveDone = true
         }
     }
 
+    // [生命周期管理]：确保 AMap 资源随系统生命周期正确回收，防止内存泄漏
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -108,6 +122,7 @@ fun MapRenderScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+        // Compose 互操作层：将 Android View (MapView) 嵌入声明式 UI
         AndroidView(
             factory = { mapView },
             modifier = Modifier.fillMaxSize(),
@@ -116,15 +131,21 @@ fun MapRenderScreen(
                 if (!isMapConfigured) {
                     setupAMapHmi(aMap)
                     
+                    // 定位监听：这是影子点退场、真实蓝点入场的唯一触发点
                     aMap.setOnMyLocationChangeListener { location ->
                         if (location != null && location.latitude != 0.0) {
                             isGpsLocked = true
+                            
+                            // 卫星锁定成功，销毁影子点
                             ghostMarkerState.value?.let {
                                 it.remove()
                                 ghostMarkerState.value = null
                             }
+
                             val geo = GeoLocation(location.latitude, location.longitude, "当前位置")
                             onLocationChanged(geo)
+
+                            // 首次平滑居中逻辑
                             if (!hasAutoCentered) {
                                 aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(geo.latitude, geo.longitude), 15f))
                                 hasAutoCentered = true
@@ -132,12 +153,14 @@ fun MapRenderScreen(
                         }
                     }
 
+                    // 对外暴露控制 handle
                     onControllerReady(AMapController(aMap))
                     isMapConfigured = true
                 }
             }
         )
 
+        // [搜星交互]：只要卫星未锁定，顶部即展示悬浮提示条
         AnimatedVisibility(
             visible = !isGpsLocked && isMapConfigured,
             enter = fadeIn(),
@@ -147,12 +170,16 @@ fun MapRenderScreen(
             GpsStatusInfoCard()
         }
 
+        // 启动加载环
         if (!isMapConfigured) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.Cyan)
         }
     }
 }
 
+/**
+ * 搜星状态展示卡片。
+ */
 @Composable
 private fun GpsStatusInfoCard() {
     Card(
@@ -170,6 +197,9 @@ private fun GpsStatusInfoCard() {
     }
 }
 
+/**
+ * 统一配置车机专属样式。
+ */
 private fun setupAMapHmi(aMap: AMap) {
     aMap.apply {
         val myLocationStyle = MyLocationStyle().apply {
@@ -179,16 +209,17 @@ private fun setupAMapHmi(aMap: AMap) {
         }
         setMyLocationStyle(myLocationStyle)
         isMyLocationEnabled = true 
-        uiSettings.isZoomControlsEnabled = false
-        uiSettings.isMyLocationButtonEnabled = false 
-        uiSettings.isCompassEnabled = true
-        // 车机默认推荐：夜间模式
+        uiSettings.apply {
+            isZoomControlsEnabled = false // 禁用原生按钮，改用我们的 Compose 悬浮按钮
+            isMyLocationButtonEnabled = false 
+            isCompassEnabled = true
+        }
         mapType = AMap.MAP_TYPE_NIGHT
     }
 }
 
 /**
- * 地图控制接口：新增样式切换
+ * 地图控制接口。
  */
 interface MapController {
     fun zoomIn()
@@ -198,9 +229,6 @@ interface MapController {
     fun setMapStyle(style: CustomMapStyle)
 }
 
-/**
- * 地图控制器具体实现
- */
 class AMapController(private val aMap: AMap) : MapController {
     override fun zoomIn() { aMap.animateCamera(CameraUpdateFactory.zoomIn()) }
     override fun zoomOut() { aMap.animateCamera(CameraUpdateFactory.zoomOut()) }
@@ -213,8 +241,5 @@ class AMapController(private val aMap: AMap) : MapController {
             aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(location.latitude, location.longitude), 15f))
         }
     }
-    
-    override fun setMapStyle(style: CustomMapStyle) {
-        aMap.mapType = style.type
-    }
+    override fun setMapStyle(style: CustomMapStyle) { aMap.mapType = style.type }
 }
