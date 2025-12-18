@@ -26,9 +26,8 @@ import kotlinx.coroutines.launch
  * 应用程序主Activity。
  * 
  * [修改说明]：
- * 1. 修复了由于缺失 :core:data 依赖导致的编译失败。
- * 2. 修正了 Compose 布局参数中 Alignment 与 Modifier 的类型冲突。
- * 3. 移除了代码中的非法编辑符。
+ * 1. 彻底清除了代码中残留的非法编辑符号。
+ * 2. 优化了 MainScreen 的调用逻辑。
  */
 class MainActivity : ComponentActivity() {
     
@@ -40,6 +39,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SimpleCockpitTheme {
                 var permissionsGranted by remember { mutableStateOf(false) }
+                // 观察缓存位置
                 val lastKnownLoc by locationRepository.lastKnownLocation.collectAsState(initial = null)
 
                 PermissionRequester(onAllGranted = {

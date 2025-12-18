@@ -1,16 +1,24 @@
 package com.example.cockpitmap.feature.map
 
 import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -28,11 +36,11 @@ import com.example.cockpitmap.core.model.GeoLocation
 private const val TAG = "MapRenderScreen"
 
 /**
- * 高德地图渲染核心组件。
+ * 高德地图渲染核心。
  * 
- * [功能增强 - 影子定位]：
- * 1. 影子图标 (Ghost Marker)：在 GPS 信号锁定前，利用缓存坐标在地图上显示一个半透明锚点。
- * 2. 自动销毁逻辑：一旦真实定位触发，影子图标立即消失，确保视觉逻辑一致。
+ * [功能微调]：
+ * 1. 影子图标校验：增加了对 0.0 坐标的过滤，防止卸载重装后的图标闪现。
+ * 2. 状态提示全覆盖：无论是否有缓存，在 GPS 锁定前均显示定位提示。
  */
 @Composable
 fun MapRenderScreen(
@@ -47,43 +55,43 @@ fun MapRenderScreen(
     var isMapConfigured by remember { mutableStateOf(false) }
     var hasAutoCentered by remember { mutableStateOf(false) }
     var isInitialMoveDone by remember { mutableStateOf(false) }
+    
+    // GPS 锁定状态
+    var isGpsLocked by remember { mutableStateOf(false) }
 
-    // 持有影子标记点的引用，以便在定位成功后移除它
+    // 持有影子标记引用
     val ghostMarkerState = remember { mutableStateOf<Marker?>(null) }
 
-    // 实例化 MapView
     val mapView = remember { 
         MapsInitializer.updatePrivacyShow(context, true, true)
         MapsInitializer.updatePrivacyAgree(context, true)
         MapView(context).apply { onCreate(null) }
     }
 
-    // 【影子图标逻辑】：启动后，只要 initialLocation (缓存) 加载成功，立即打上标记
+    // 缓存位置应用逻辑
     LaunchedEffect(initialLocation) {
-        if (initialLocation != null && !isInitialMoveDone) {
+        // 【关键修复】：增加 latitude != 0.0 校验，防止卸载重装后读取到 DataStore 初始零值导致的图标闪现
+        if (initialLocation != null && initialLocation.latitude != 0.0 && !isInitialMoveDone) {
             val aMap = mapView.map
             val latLng = LatLng(initialLocation.latitude, initialLocation.longitude)
             
-            // 1. 镜头跳转
             aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
             
-            // 2. 放置影子标记点
-            ghostMarkerState.value?.remove() // 防重
+            // 部署影子图标
+            ghostMarkerState.value?.remove()
             val marker = aMap.addMarker(
                 MarkerOptions()
                     .position(latLng)
                     .anchor(0.5f, 0.5f)
-                    .alpha(0.6f) // 半透明
+                    .alpha(0.6f)
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
                     .title("记忆位置")
             )
             ghostMarkerState.value = marker
             isInitialMoveDone = true
-            Log.d(TAG, "Ghost Marker 已部署 at: ${initialLocation.latitude}")
         }
     }
 
-    // 生命周期联动
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -109,13 +117,14 @@ fun MapRenderScreen(
                 if (!isMapConfigured) {
                     setupAMapHmi(aMap)
                     
-                    // 定位监听：这是影子图标退场的触发器
                     aMap.setOnMyLocationChangeListener { location ->
                         if (location != null && location.latitude != 0.0) {
+                            // 卫星锁定成功
+                            isGpsLocked = true
                             
-                            // 【核心联动】：真实定位成功，移除影子
+                            // 销毁影子
                             ghostMarkerState.value?.let {
-                                Log.i(TAG, "真实 GPS 锁定，正在移除影子锚点...")
+                                Log.i(TAG, "GPS Fix: 移除影子锚点")
                                 it.remove()
                                 ghostMarkerState.value = null
                             }
@@ -136,8 +145,36 @@ fun MapRenderScreen(
             }
         )
 
+        // --- 搜星提示条 ---
+        // 【修改逻辑】：只要 GPS 未锁定，且地图已基本就绪，就显示提示（覆盖无缓存启动场景）
+        AnimatedVisibility(
+            visible = !isGpsLocked && isMapConfigured,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp)
+        ) {
+            GpsStatusInfoCard()
+        }
+
         if (!isMapConfigured) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color.Cyan)
+        }
+    }
+}
+
+@Composable
+private fun GpsStatusInfoCard() {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.6f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.Cyan)
+            Spacer(Modifier.width(12.dp))
+            Text(text = "正在获取卫星定位...", color = Color.White, fontSize = 14.sp)
         }
     }
 }
