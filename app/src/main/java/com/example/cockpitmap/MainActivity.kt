@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+// 引入核心模型和地图功能组件
+import com.example.cockpitmap.core.model.GeoLocation
+import com.example.cockpitmap.feature.map.MapRenderScreen
 
 /**
  * 应用程序主入口 Activity。
@@ -40,12 +42,10 @@ class MainActivity : ComponentActivity() {
 
 /**
  * 车机基础主题配置
- * 未来可扩展为从 [core:designsystem] 获取统一的配色方案
  */
 @Composable
 fun SimpleCockpitTheme(content: @Composable () -> Unit) {
     val darkTheme = isSystemInDarkTheme()
-    // 车机环境建议优先使用深色模式以减少夜间驾驶炫光
     val colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()
     MaterialTheme(
         colorScheme = colorScheme,
@@ -55,26 +55,21 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
 
 /**
  * 主屏幕布局。
- * 采用层叠布局 (Box)，底层为地图，上层悬浮交互组件。
+ * 按照 [MODULES.md] 规范，将 feature 模块的组件组合在一起。
  */
 @Composable
 fun MainScreen() {
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
             
-            // --- 区域 1: 地图底座 ---
-            // 占位符，未来接入 feature:map 模块的地图渲染组件
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF2C3E50)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("地图图层加载中...", color = Color.LightGray)
-            }
+            // --- 区域 1: 核心地图渲染层 ---
+            // 调用 [feature:map] 模块提供的组件
+            MapRenderScreen(
+                modifier = Modifier.fillMaxSize(),
+                initialLocation = GeoLocation(39.9042, 116.4074, "北京") // 模拟初始位置
+            )
 
-            // --- 区域 2: 导航搜索面板 ---
-            // 放置在屏幕左侧，靠近驾驶员一侧，方便盲操
+            // --- 区域 2: 导航搜索面板 (悬浮) ---
             NavigationPanel(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -82,16 +77,14 @@ fun MainScreen() {
                     .width(360.dp)
             )
 
-            // --- 区域 3: 快捷操作控制 ---
-            // 右侧垂直排列大按钮，用于缩放地图和触发关键操作
+            // --- 区域 3: 快捷操作控制 (悬浮) ---
             QuickActions(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 24.dp)
             )
 
-            // --- 區域 4: 语音助手状态栏 ---
-            // 底部居中展示，减少对地图路径遮挡
+            // --- 区域 4: 语音助手状态栏 (悬浮) ---
             VoiceStatusBar(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -102,14 +95,13 @@ fun MainScreen() {
 }
 
 /**
- * 搜索与目的地快捷面板
+ * 搜索与目的地快捷面板 (UI 组件)
  */
 @Composable
 fun NavigationPanel(modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        // 半透明背景，确保能隐约看到地图背景
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
         )
@@ -133,12 +125,11 @@ fun NavigationPanel(modifier: Modifier = Modifier) {
 }
 
 /**
- * 地图操作快捷按钮组
+ * 地图操作快捷按钮组 (UI 组件)
  */
 @Composable
 fun QuickActions(modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        // 放大按钮：车机按钮需保持足够大的点击区域 (>= 64dp 推荐)
         FloatingActionButton(
             onClick = {}, 
             containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -146,7 +137,6 @@ fun QuickActions(modifier: Modifier = Modifier) {
             Text("+", style = MaterialTheme.typography.headlineSmall)
         }
         Spacer(Modifier.height(16.dp))
-        // 缩小按钮
         FloatingActionButton(
             onClick = {}, 
             containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -154,7 +144,6 @@ fun QuickActions(modifier: Modifier = Modifier) {
             Text("-", style = MaterialTheme.typography.headlineSmall)
         }
         Spacer(Modifier.height(16.dp))
-        // 语音唤醒/定位按钮
         FloatingActionButton(onClick = {}) {
             Icon(Icons.Default.Mic, contentDescription = "语音助手")
         }
@@ -162,7 +151,7 @@ fun QuickActions(modifier: Modifier = Modifier) {
 }
 
 /**
- * 语音交互状态展示栏
+ * 语音交互状态展示栏 (UI 组件)
  */
 @Composable
 fun VoiceStatusBar(modifier: Modifier = Modifier) {
