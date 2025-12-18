@@ -18,18 +18,21 @@ import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
 import com.amap.api.maps.MapsInitializer
+import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.LatLng
+import com.amap.api.maps.model.Marker
+import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.MyLocationStyle
 import com.example.cockpitmap.core.model.GeoLocation
 
 private const val TAG = "MapRenderScreen"
 
 /**
- * 高德地图渲染组件
+ * 高德地图渲染核心组件。
  * 
- * [深度优化说明]：
- * 1. 解决了启动时 DataStore 异步读取导致无法应用缓存坐标的问题。
- * 2. 引入 LaunchedEffect 监听 initialLocation，实现真正的“启动即回显”。
+ * [功能增强 - 影子定位]：
+ * 1. 影子图标 (Ghost Marker)：在 GPS 信号锁定前，利用缓存坐标在地图上显示一个半透明锚点。
+ * 2. 自动销毁逻辑：一旦真实定位触发，影子图标立即消失，确保视觉逻辑一致。
  */
 @Composable
 fun MapRenderScreen(
@@ -43,39 +46,53 @@ fun MapRenderScreen(
     
     var isMapConfigured by remember { mutableStateOf(false) }
     var hasAutoCentered by remember { mutableStateOf(false) }
-    
-    // 状态锁：确保启动时的缓存跳转只执行一次
     var isInitialMoveDone by remember { mutableStateOf(false) }
 
-    // 1. 初始化 MapView 实例
+    // 持有影子标记点的引用，以便在定位成功后移除它
+    val ghostMarkerState = remember { mutableStateOf<Marker?>(null) }
+
+    // 实例化 MapView
     val mapView = remember { 
         MapsInitializer.updatePrivacyShow(context, true, true)
         MapsInitializer.updatePrivacyAgree(context, true)
         MapView(context).apply { onCreate(null) }
     }
 
-    // 【关键修复】：监听 initialLocation 的变化
-    // 由于 DataStore 是异步读取，initialLocation 在启动首帧通常为 null。
-    // 当读取成功后，本 Effect 会被触发，执行“瞬移”操作。
+    // 【影子图标逻辑】：启动后，只要 initialLocation (缓存) 加载成功，立即打上标记
     LaunchedEffect(initialLocation) {
         if (initialLocation != null && !isInitialMoveDone) {
-            Log.i(TAG, "Apply Cache: 检测到有效缓存位置，执行镜头瞬移: ${initialLocation.latitude}")
-            mapView.map.moveCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(initialLocation.latitude, initialLocation.longitude), 15f
-                )
+            val aMap = mapView.map
+            val latLng = LatLng(initialLocation.latitude, initialLocation.longitude)
+            
+            // 1. 镜头跳转
+            aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 15f))
+            
+            // 2. 放置影子标记点
+            ghostMarkerState.value?.remove() // 防重
+            val marker = aMap.addMarker(
+                MarkerOptions()
+                    .position(latLng)
+                    .anchor(0.5f, 0.5f)
+                    .alpha(0.6f) // 半透明
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
+                    .title("记忆位置")
             )
+            ghostMarkerState.value = marker
             isInitialMoveDone = true
+            Log.d(TAG, "Ghost Marker 已部署 at: ${initialLocation.latitude}")
         }
     }
 
-    // 2. 生命周期管理
+    // 生命周期联动
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> mapView.onResume()
                 Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
+                Lifecycle.Event.ON_DESTROY -> {
+                    ghostMarkerState.value?.remove()
+                    mapView.onDestroy()
+                }
                 else -> {}
             }
         }
@@ -92,14 +109,21 @@ fun MapRenderScreen(
                 if (!isMapConfigured) {
                     setupAMapHmi(aMap)
                     
+                    // 定位监听：这是影子图标退场的触发器
                     aMap.setOnMyLocationChangeListener { location ->
                         if (location != null && location.latitude != 0.0) {
+                            
+                            // 【核心联动】：真实定位成功，移除影子
+                            ghostMarkerState.value?.let {
+                                Log.i(TAG, "真实 GPS 锁定，正在移除影子锚点...")
+                                it.remove()
+                                ghostMarkerState.value = null
+                            }
+
                             val geo = GeoLocation(location.latitude, location.longitude, "当前位置")
                             onLocationChanged(geo)
 
-                            // 首次 GPS 定位后的平滑移动（仅在无缓存或未跳转过时生效）
                             if (!hasAutoCentered) {
-                                // 如果没做过 initialMove，或者当前位置距离缓存点太远，可以执行一次 animate
                                 aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(geo.latitude, geo.longitude), 15f))
                                 hasAutoCentered = true
                             }
@@ -118,9 +142,6 @@ fun MapRenderScreen(
     }
 }
 
-/**
- * 车机 HMI 专用配置
- */
 private fun setupAMapHmi(aMap: AMap) {
     aMap.apply {
         val myLocationStyle = MyLocationStyle().apply {
@@ -134,7 +155,6 @@ private fun setupAMapHmi(aMap: AMap) {
             isZoomControlsEnabled = false
             isMyLocationButtonEnabled = false 
             isCompassEnabled = true
-            isScaleControlsEnabled = true
         }
         mapType = AMap.MAP_TYPE_NIGHT
     }

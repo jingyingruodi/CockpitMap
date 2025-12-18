@@ -23,19 +23,15 @@ import com.example.cockpitmap.feature.map.MapRenderScreen
 import kotlinx.coroutines.launch
 
 /**
- * 应用程序主入口 Activity。
+ * 应用程序主Activity。
  * 
  * [修改说明]：
  * 1. 修复了由于缺失 :core:data 依赖导致的编译失败。
  * 2. 修正了 Compose 布局参数中 Alignment 与 Modifier 的类型冲突。
- * 3. 补全了缺失的 Import (dp, MyLocation 图标等)。
+ * 3. 移除了代码中的非法编辑符。
  */
 class MainActivity : ComponentActivity() {
     
-    /**
-     * 持久化位置数据仓库。
-     * 单例模式，确保整个应用生命周期内 DataStore 访问的一致性。
-     */
     private val locationRepository by lazy { LocationRepository(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,13 +39,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SimpleCockpitTheme {
-                // 权限授予状态
                 var permissionsGranted by remember { mutableStateOf(false) }
-                
-                // 从 Repository 读取缓存位置
                 val lastKnownLoc by locationRepository.lastKnownLocation.collectAsState(initial = null)
 
-                // 先行请求权限
                 PermissionRequester(onAllGranted = {
                     permissionsGranted = true
                 })
@@ -60,7 +52,6 @@ class MainActivity : ComponentActivity() {
                         cachedLocation = lastKnownLoc
                     )
                 } else {
-                    // 等待权限时显示深色占位，避免白屏
                     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {}
                 }
             }
@@ -68,9 +59,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * 运行时权限请求组件。
- */
 @Composable
 fun PermissionRequester(onAllGranted: () -> Unit) {
     val launcher = rememberLauncherForActivityResult(
@@ -86,9 +74,6 @@ fun PermissionRequester(onAllGranted: () -> Unit) {
     }
 }
 
-/**
- * 主题配置。
- */
 @Composable
 fun SimpleCockpitTheme(content: @Composable () -> Unit) {
     val darkTheme = isSystemInDarkTheme()
@@ -98,9 +83,6 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
     )
 }
 
-/**
- * 主屏幕 UI 组合容器。
- */
 @Composable
 fun MainScreen(
     repository: LocationRepository,
@@ -111,19 +93,15 @@ fun MainScreen(
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
-            
-            // 地图渲染核心
             MapRenderScreen(
                 modifier = Modifier.fillMaxSize(),
                 initialLocation = cachedLocation,
                 onLocationChanged = { newLoc ->
-                    // 每当捕获新坐标，异步存入 DataStore
                     scope.launch { repository.saveLastLocation(newLoc) }
                 },
                 onControllerReady = { controller -> mapController = controller }
             )
 
-            // 右侧快捷操作按钮
             QuickActions(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -136,9 +114,6 @@ fun MainScreen(
     }
 }
 
-/**
- * 地图快捷控制按钮组。
- */
 @Composable
 fun QuickActions(
     modifier: Modifier = Modifier,
@@ -147,19 +122,9 @@ fun QuickActions(
     onLocateMe: () -> Unit
 ) {
     Column(modifier = modifier) {
-        FloatingActionButton(
-            onClick = onZoomIn,
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        ) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
-        }
+        FloatingActionButton(onClick = onZoomIn) { Text("+") }
         Spacer(Modifier.height(16.dp))
-        FloatingActionButton(
-            onClick = onZoomOut,
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        ) {
-            Text("-", style = MaterialTheme.typography.titleLarge)
-        }
+        FloatingActionButton(onClick = onZoomOut) { Text("-") }
         Spacer(Modifier.height(16.dp))
         FloatingActionButton(onClick = onLocateMe) {
             Icon(Icons.Default.MyLocation, contentDescription = "定位")
