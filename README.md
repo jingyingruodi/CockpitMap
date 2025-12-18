@@ -1,33 +1,43 @@
-# CockpitMap - 智能车载导航系统
+# CockpitMap - 智能车载导航系统 🚗📍
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Android Studio](https://img.shields.io/badge/Android%20Studio-Ladybug-blue.svg)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0-purple.svg)
 
 ## 📌 项目简介
-CockpitMap 是一款专为 Android 车机系统设计的导航地图程序。本项目采用模块化架构开发，旨在提供高性能、高可靠性且符合车载 HMI 标准的导航体验。
+CockpitMap 是一款专为 Android 车机系统设计的**现代导航地图程序**。本项目采用**现代 Android 模块化架构**开发，深度适配车载 HMI（人机交互）标准，旨在为开发者提供一个可扩展、高性能的车载导航基础框架。
 
-## 🛠 核心功能规划
-- [ ] **地图集成**: 支持多源地图数据渲染（矢量/卫星）。
-- [ ] **路径规划**: 实时避堵、多路径策略选择。
-- [ ] **语音交互**: 深度集成 TTS 与 ASR，支持全语音控制导航。
-- [ ] **车机适配**: 针对车载屏幕大尺寸、高对比度、驾驶安全交互进行专项优化。
+## 🛠 核心功能
+- **全屏沉浸地图**: 采用 Compose 打造的沉浸式地图底座。
+- **车载 HMI 适配**: 大尺寸交互组件、高对比度视觉设计，确保驾驶安全。
+- **模块化架构**: 清晰的业务逻辑拆分，支持多人高效协作。
+- **语音交互预设**: 内置语音助手交互 UI 及状态管理。
 
-## 🏗 技术架构
-项目采用 **Clean Architecture** 结合 **MVI/MVVM** 设计模式，并进行多模块化拆分：
+## 🏗 技术架构说明
+本项目严格遵循 **Clean Architecture** 架构：
+- **UI 层**: Jetpack Compose (Material 3)
+- **架构模式**: MVI / MVVM
+- **依赖管理**: Version Catalog (libs.versions.toml)
+- **模块化**: 详细说明请参见 [MODULES.md](./MODULES.md) 👈
 
-### 模块说明
-- `app`: 宿主程序。
-- `feature:*`: 独立业务模块。
-- `core:designsystem`: 车机标准组件库。
-- `core:network/data`: 数据通信与持久化。
+## 📁 模块速览
+- `:app` - 应用入口与模块集成。
+- `:feature:map` - 地图渲染与交互核心。
+- `:feature:routing` - 路径规划与导航逻辑。
+- `:core:designsystem` - 车机标准 UI 组件库。
+- `:core:data` - 数据持久化与 Repository 实现。
 
-## 👥 协作指南
-1. **代码规范**: 请遵循 Kotlin 官方代码风格。
-2. **分支管理**: 采用 Git Flow。所有 Feature 开发请从 `develop` 分支拉取，通过 PR 合入。
-3. **提交规范**: 建议使用 `feat:`, `fix:`, `docs:`, `refactor:` 等前缀。
+## 🤝 协作开发
+1. **查阅文档**: 开发前请务必阅读 [模块化开发指南](./MODULES.md)。
+2. **分支管理**: 采用 Git Flow，Feature 开发请基于 `develop` 分支。
+3. **提交规范**: 遵循 Angular Commit Message 规范。
 
 ## 🚀 快速开始
-1. 克隆项目：`git clone https://github.com/your-repo/CockpitMap.git`
+1. `git clone https://github.com/your-repo/CockpitMap.git`
 2. 使用 Android Studio Ladybug 或更高版本打开。
-3. 同步 Gradle 并运行 `app` 模块。
+3. 点击 `Sync Project with Gradle Files`。
+4. 运行 `app` 模块。
 
 ---
 **开发者**: [jingyingruodi]  
-**许可证**: MIT
+**许可证**: [MIT](./LICENSE)
