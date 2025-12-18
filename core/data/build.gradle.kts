@@ -22,5 +22,10 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:common"))
-    implementation(libs.androidx.core.ktx) // 已修正：- 改为 .
+    implementation(project(":core:network"))
+    
+    // DataStore
+    implementation(libs.androidx.datastore.preferences)
+    
+    implementation(libs.androidx.core.ktx)
 }
