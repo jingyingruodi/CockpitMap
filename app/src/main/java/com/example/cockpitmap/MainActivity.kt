@@ -1,9 +1,12 @@
 package com.example.cockpitmap
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,17 +16,21 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-// 引入核心模型和地图功能组件
+// 引用核心模型与地图功能模块
 import com.example.cockpitmap.core.model.GeoLocation
 import com.example.cockpitmap.feature.map.MapRenderScreen
 
 /**
- * 应用程序主入口 Activity。
- * 采用全屏沉浸式设计，适配车机横屏/宽屏显示。
+ * [CockpitMap] 项目主入口
+ * 
+ * 架构设计守则：
+ * 1. 本 Activity 作为“壳”，仅负责各 feature 模块的拼装与系统级权限调度。
+ * 2. UI 采用沉浸式全屏布局，适配车载宽屏/横屏。
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,14 +41,47 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             SimpleCockpitTheme {
-                MainScreen()
+                // 启动权限检查流程
+                PermissionRequester {
+                    MainScreen()
+                }
             }
         }
     }
 }
 
 /**
+ * 运行时权限请求组件
+ * 
+ * 修复 bug: 解决卸载重装后不申请权限导致高德 SDK 定位失败的问题。
+ */
+@Composable
+fun PermissionRequester(onGranted: @Composable () -> Unit) {
+    val permissions = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.READ_PHONE_STATE
+    )
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        // 权限申请结果处理逻辑（此处简化，实际生产环境可增加引导说明）
+    }
+
+    LaunchedEffect(Unit) {
+        launcher.launch(permissions)
+    }
+
+    onGranted()
+}
+
+/**
  * 车机基础主题配置
+ * 
+ * 视觉守则：
+ * 1. 优先使用 Dark 模式，减少驾驶员夜间视觉疲劳。
+ * 2. 使用 Material 3 规范以获得更好的动态配色支持。
  */
 @Composable
 fun SimpleCockpitTheme(content: @Composable () -> Unit) {
@@ -54,22 +94,28 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
 }
 
 /**
- * 主屏幕布局。
- * 按照 [MODULES.md] 规范，将 feature 模块的组件组合在一起。
+ * 主屏幕组合容器
+ * 
+ * HMI 布局逻辑：
+ * - 底部：地图渲染层 (MapRenderScreen)
+ * - 左侧：驾驶员操作面板 (NavigationPanel)
+ * - 右侧：快捷工具栏 (QuickActions)
+ * - 中下：语音交互栏 (VoiceStatusBar)
  */
 @Composable
 fun MainScreen() {
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
             
-            // --- 区域 1: 核心地图渲染层 ---
-            // 调用 [feature:map] 模块提供的组件
+            // --- 核心地图渲染层 ---
+            // 调用自 [:feature:map] 模块，传入北京作为默认预览位置
             MapRenderScreen(
                 modifier = Modifier.fillMaxSize(),
-                initialLocation = GeoLocation(39.9042, 116.4074, "北京") // 模拟初始位置
+                initialLocation = GeoLocation(39.9042, 116.4074, "天安门")
             )
 
-            // --- 区域 2: 导航搜索面板 (悬浮) ---
+            // --- 导航搜索面板 (悬浮) ---
+            // 位置：左上角，距离左边 24dp，方便左舵车主盲操
             NavigationPanel(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -77,14 +123,16 @@ fun MainScreen() {
                     .width(360.dp)
             )
 
-            // --- 区域 3: 快捷操作控制 (悬浮) ---
+            // --- 快捷操作控制 (悬浮) ---
+            // 位置：右侧中心，采用大尺寸 FAB (FloatingActionButton) 确保安全点击
             QuickActions(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 24.dp)
             )
 
-            // --- 区域 4: 语音助手状态栏 (悬浮) ---
+            // --- 语音助手状态栏 (悬浮) ---
+            // 位置：底部中央，采用胶囊型卡片减少对地图路径的遮挡
             VoiceStatusBar(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -95,7 +143,7 @@ fun MainScreen() {
 }
 
 /**
- * 搜索与目的地快捷面板 (UI 组件)
+ * 搜索与常用目的地面板
  */
 @Composable
 fun NavigationPanel(modifier: Modifier = Modifier) {
@@ -108,24 +156,26 @@ fun NavigationPanel(modifier: Modifier = Modifier) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Menu, contentDescription = "设置")
+                Icon(Icons.Default.Menu, contentDescription = "菜单")
                 Spacer(Modifier.width(16.dp))
-                Text("寻找目的地...", style = MaterialTheme.typography.bodyLarge)
+                Text("输入目的地...", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.weight(1f))
                 Icon(Icons.Default.Search, contentDescription = "搜索")
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-            Text("常用：", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+            Text("快速前往：", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
             Spacer(Modifier.height(8.dp))
-            Text("🏠 回家 (预计15分钟)", style = MaterialTheme.typography.bodyLarge)
+            Text("🏠 回家 (15分钟)", style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(12.dp))
-            Text("🏢 公司 (预计35分钟)", style = MaterialTheme.typography.bodyLarge)
+            Text("🏢 去公司 (35分钟)", style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
 
 /**
- * 地图操作快捷按钮组 (UI 组件)
+ * 地图工具栏（缩放/定位）
+ * 
+ * 安全规范：车载环境下的按钮尺寸必须大于 48dp (此处使用 56dp+ 容器)
  */
 @Composable
 fun QuickActions(modifier: Modifier = Modifier) {
@@ -145,13 +195,13 @@ fun QuickActions(modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(16.dp))
         FloatingActionButton(onClick = {}) {
-            Icon(Icons.Default.Mic, contentDescription = "语音助手")
+            Icon(Icons.Default.Mic, contentDescription = "语音/定位")
         }
     }
 }
 
 /**
- * 语音交互状态展示栏 (UI 组件)
+ * 语音助手状态栏
  */
 @Composable
 fun VoiceStatusBar(modifier: Modifier = Modifier) {
@@ -165,9 +215,9 @@ fun VoiceStatusBar(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.Mic, contentDescription = "语音波形", tint = Color.Cyan)
+            Icon(Icons.Default.Mic, contentDescription = "语音", tint = Color.Cyan)
             Spacer(Modifier.width(16.dp))
-            Text("你好，请问想去哪里？", color = Color.White)
+            Text("正在倾听...", color = Color.White)
         }
     }
 }
