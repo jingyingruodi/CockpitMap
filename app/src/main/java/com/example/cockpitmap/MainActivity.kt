@@ -8,9 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
@@ -21,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.cockpitmap.core.data.repository.LocationRepository
+import com.example.cockpitmap.core.designsystem.CockpitFloatingButton
+import com.example.cockpitmap.core.designsystem.CockpitSurface
 import com.example.cockpitmap.core.model.CustomMapStyle
 import com.example.cockpitmap.core.model.MapController
 import com.example.cockpitmap.feature.map.MapRenderScreen
@@ -28,12 +28,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 应用程序主入口 Activity。
+ * 应用程序主 Activity。
  * 
- * [修正重点]：
- * 1. 同步了 CustomMapStyle 和 MapController 的下沉路径。
- * 2. 彻底清理了代码中的非法字符标记。
- * 3. 规范了 Compose 状态观察语法。
+ * [加固说明]：
+ * 按照 [AI_RULES.md] 规范，所有的 UI 组件已迁移至 :core:designsystem。
  */
 class MainActivity : ComponentActivity() {
     
@@ -45,7 +43,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             SimpleCockpitTheme {
                 var permissionsGranted by remember { mutableStateOf(false) }
-                // 观察缓存位置
                 val lastKnownLoc by locationRepository.lastKnownLocation.collectAsState(initial = null)
 
                 PermissionRequester(onAllGranted = {
@@ -82,9 +79,8 @@ fun PermissionRequester(onAllGranted: () -> Unit) {
 
 @Composable
 fun SimpleCockpitTheme(content: @Composable () -> Unit) {
-    val darkTheme = isSystemInDarkTheme()
     MaterialTheme(
-        colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
+        colorScheme = darkColorScheme(),
         content = content
     )
 }
@@ -94,14 +90,12 @@ fun MainScreen(
     repository: LocationRepository,
     cachedLocation: com.example.cockpitmap.core.model.GeoLocation?
 ) {
-    // 修正：去除非法 handle 占位符
     var mapController by remember { mutableStateOf<MapController?>(null) }
     val scope = rememberCoroutineScope()
     
-    // 样式循环切换逻辑：使用 entries 获取枚举列表
     val styles = CustomMapStyle.entries.toTypedArray()
     val styleNames = listOf("标准模式", "夜间模式", "卫星模式", "导航模式")
-    var currentStyleIndex by remember { mutableIntStateOf(1) } // 默认 NIGHT
+    var currentStyleIndex by remember { mutableIntStateOf(1) } 
     
     var showStyleHint by remember { mutableStateOf(false) }
     var hintText by remember { mutableStateOf("") }
@@ -117,21 +111,16 @@ fun MainScreen(
                 onControllerReady = { controller -> mapController = controller }
             )
 
-            // 样式切换提示卡片
+            // 应用标准车机 Surface 组件
             AnimatedVisibility(
                 visible = showStyleHint,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically(),
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 160.dp)
             ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
+                CockpitSurface {
                     Text(
                         text = hintText,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -147,7 +136,6 @@ fun MainScreen(
                 onSwitchStyle = {
                     currentStyleIndex = (currentStyleIndex + 1) % styles.size
                     val newStyle = styles[currentStyleIndex]
-                    // 修正：调用接口中定义的 Int 类型 type
                     mapController?.setMapStyle(newStyle.type)
                     
                     hintText = "已切换至：${styleNames[currentStyleIndex]}"
@@ -171,21 +159,22 @@ fun QuickActions(
     onSwitchStyle: () -> Unit
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        FloatingActionButton(onClick = onZoomIn) { Text("+") }
+        // 使用标准车机悬浮按钮组件
+        CockpitFloatingButton(onClick = onZoomIn, icon = { Text("+") })
         Spacer(Modifier.height(12.dp))
-        FloatingActionButton(onClick = onZoomOut) { Text("-") }
+        CockpitFloatingButton(onClick = onZoomOut, icon = { Text("-") })
         Spacer(Modifier.height(12.dp))
         
-        FloatingActionButton(
+        CockpitFloatingButton(
             onClick = onSwitchStyle,
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-        ) {
-            Icon(Icons.Default.Layers, contentDescription = "样式")
-        }
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            icon = { Icon(Icons.Default.Layers, contentDescription = "样式") }
+        )
         
         Spacer(Modifier.height(12.dp))
-        FloatingActionButton(onClick = onLocateMe) {
-            Icon(Icons.Default.MyLocation, contentDescription = "定位")
-        }
+        CockpitFloatingButton(
+            onClick = onLocateMe,
+            icon = { Icon(Icons.Default.MyLocation, contentDescription = "定位") }
+        )
     }
 }
