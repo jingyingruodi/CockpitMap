@@ -21,8 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.cockpitmap.core.data.repository.LocationRepository
-import com.example.cockpitmap.feature.map.CustomMapStyle
-import com.example.cockpitmap.feature.map.MapController
+import com.example.cockpitmap.core.model.CustomMapStyle
+import com.example.cockpitmap.core.model.MapController
 import com.example.cockpitmap.feature.map.MapRenderScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -30,9 +30,10 @@ import kotlinx.coroutines.launch
 /**
  * 应用程序主入口 Activity。
  * 
- * [修改说明]：
- * 1. 彻底修复了 `import` 语句中的拼写错误。
- * 2. 完善了地图样式切换提示逻辑。
+ * [修正重点]：
+ * 1. 同步了 CustomMapStyle 和 MapController 的下沉路径。
+ * 2. 彻底清理了代码中的非法字符标记。
+ * 3. 规范了 Compose 状态观察语法。
  */
 class MainActivity : ComponentActivity() {
     
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SimpleCockpitTheme {
                 var permissionsGranted by remember { mutableStateOf(false) }
+                // 观察缓存位置
                 val lastKnownLoc by locationRepository.lastKnownLocation.collectAsState(initial = null)
 
                 PermissionRequester(onAllGranted = {
@@ -92,12 +94,14 @@ fun MainScreen(
     repository: LocationRepository,
     cachedLocation: com.example.cockpitmap.core.model.GeoLocation?
 ) {
+    // 修正：去除非法 handle 占位符
     var mapController by remember { mutableStateOf<MapController?>(null) }
     val scope = rememberCoroutineScope()
     
-    val styles = CustomMapStyle.values()
+    // 样式循环切换逻辑：使用 entries 获取枚举列表
+    val styles = CustomMapStyle.entries.toTypedArray()
     val styleNames = listOf("标准模式", "夜间模式", "卫星模式", "导航模式")
-    var currentStyleIndex by remember { mutableStateOf(1) } 
+    var currentStyleIndex by remember { mutableIntStateOf(1) } // 默认 NIGHT
     
     var showStyleHint by remember { mutableStateOf(false) }
     var hintText by remember { mutableStateOf("") }
@@ -113,7 +117,7 @@ fun MainScreen(
                 onControllerReady = { controller -> mapController = controller }
             )
 
-            // 样式切换提示组件
+            // 样式切换提示卡片
             AnimatedVisibility(
                 visible = showStyleHint,
                 enter = fadeIn() + expandVertically(),
@@ -142,7 +146,9 @@ fun MainScreen(
                 onLocateMe = { mapController?.locateMe() },
                 onSwitchStyle = {
                     currentStyleIndex = (currentStyleIndex + 1) % styles.size
-                    mapController?.setMapStyle(styles[currentStyleIndex])
+                    val newStyle = styles[currentStyleIndex]
+                    // 修正：调用接口中定义的 Int 类型 type
+                    mapController?.setMapStyle(newStyle.type)
                     
                     hintText = "已切换至：${styleNames[currentStyleIndex]}"
                     scope.launch {
@@ -169,12 +175,14 @@ fun QuickActions(
         Spacer(Modifier.height(12.dp))
         FloatingActionButton(onClick = onZoomOut) { Text("-") }
         Spacer(Modifier.height(12.dp))
+        
         FloatingActionButton(
             onClick = onSwitchStyle,
             containerColor = MaterialTheme.colorScheme.tertiaryContainer
         ) {
-            Icon(Icons.Default.Layers, contentDescription = "切换样式")
+            Icon(Icons.Default.Layers, contentDescription = "样式")
         }
+        
         Spacer(Modifier.height(12.dp))
         FloatingActionButton(onClick = onLocateMe) {
             Icon(Icons.Default.MyLocation, contentDescription = "定位")
