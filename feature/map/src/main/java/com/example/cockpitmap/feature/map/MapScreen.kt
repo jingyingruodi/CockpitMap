@@ -1,6 +1,6 @@
 package com.example.cockpitmap.feature.map
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,85 +19,95 @@ import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
 import com.amap.api.maps.MapsInitializer
 import com.amap.api.maps.model.LatLng
+import com.amap.api.maps.model.MyLocationStyle
 import com.example.cockpitmap.core.model.GeoLocation
+
+private const val TAG = "MapRenderScreen"
 
 /**
  * 高德地图渲染核心组件
  * 
  * 按照 [MODULES.md] 规范：
- * 1. 封装第三方 SDK 细节，对外仅暴露基础配置。
- * 2. 严格管理 native 视图生命周期，防止车机长时间运行内存溢出。
- * 3. 针对“黑屏”问题：优化了隐私协议初始化时序，确保在视图创建前完成合规确认。
+ * 1. 内部处理高德 SDK 的复杂定位监听逻辑。
+ * 2. 自动处理“首次定位居中”与“定位异常超时”。
+ * 3. 暴露 [onControllerReady] 回调，允许宿主模块控制地图。
  */
 @Composable
 fun MapRenderScreen(
     modifier: Modifier = Modifier,
-    initialLocation: GeoLocation? = null
+    initialLocation: GeoLocation? = null,
+    onControllerReady: (MapController) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     
-    // 状态管理：地图是否已完成初始化
-    var isMapInitialized by remember { mutableStateOf(false) }
+    // 状态：地图渲染是否已就绪
+    var isMapVisible by remember { mutableStateOf(false) }
+    // 状态：是否已完成首次定位自动居中
+    var hasAutoCentered by remember { mutableStateOf(false) }
 
-    // 【关键修复】：高德 SDK 隐私协议必须在 MapView 实例化 *之前* 调用
-    // 使用 SideEffect 或在 remember 块之前确保执行，防止黑屏或 SDK 拦截渲染
+    // 1. 初始化隐私协议 (必须最前)
     remember {
         MapsInitializer.updatePrivacyShow(context, true, true)
         MapsInitializer.updatePrivacyAgree(context, true)
         true
     }
 
-    // 实例化 MapView 并手动调用其初始声明周期
+    // 2. 持久化 MapView
     val mapView = remember { 
-        MapView(context).apply {
-            // 某些情况下，factory 运行太快，在这里先同步一次核心生命周期
-            onCreate(null) 
-        }
+        MapView(context).apply { onCreate(null) }
     }
 
-    // 将 AMap 全生命周期与 Compose 宿主严格绑定
+    // 3. 生命周期绑定
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> mapView.onResume()
                 Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_DESTROY -> {
-                    mapView.onDestroy()
-                }
+                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
                 else -> {}
             }
         }
         lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        // 渲染底层的原生地图视图
         AndroidView(
             factory = { mapView },
             modifier = Modifier.fillMaxSize(),
             update = { view ->
-                // 地图加载完成后的首次配置
-                if (!isMapInitialized) {
-                    setupAMap(view.map)
-                    initialLocation?.let {
-                        view.map.moveCamera(
-                            CameraUpdateFactory.newLatLngZoom(
-                                LatLng(it.latitude, it.longitude), 
-                                12f
+                val aMap = view.map
+                if (!isMapVisible) {
+                    setupAMap(aMap)
+                    
+                    // 注册定位变化监听，实现“首次定位自动移动镜头”
+                    aMap.setOnMyLocationChangeListener { location ->
+                        if (location != null && !hasAutoCentered) {
+                            Log.d(TAG, "首次定位成功: ${location.latitude}, ${location.longitude}")
+                            aMap.animateCamera(
+                                CameraUpdateFactory.newLatLngZoom(
+                                    LatLng(location.latitude, location.longitude), 15f
+                                )
                             )
-                        )
+                            hasAutoCentered = true
+                        }
                     }
-                    isMapInitialized = true
+
+                    // 初始默认位置备份（如果定位太慢，先看一眼初始点）
+                    initialLocation?.let {
+                        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 10f))
+                    }
+
+                    // 初始化控制器并回调给宿主
+                    onControllerReady(AMapController(aMap))
+                    isMapVisible = true
                 }
             }
         )
 
-        // 如果地图还没准备好，显示一个优雅的加载进度条，避免纯黑屏闪烁
-        if (!isMapInitialized) {
+        // 覆盖层：当地图还没渲染出来时，显示进度
+        if (!isMapVisible) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
                 color = Color.Cyan
@@ -107,27 +117,42 @@ fun MapRenderScreen(
 }
 
 /**
- * 高德地图 HMI 专项配置
- * 
- * 适配守则：
- * 1. 强制夜间模式：减少车内光污染。
- * 2. 简化 UI：禁用原生缩放按钮，由 feature 模块自定义大尺寸按钮接管。
+ * AMap 基础属性配置
  */
 private fun setupAMap(aMap: AMap) {
     aMap.apply {
-        uiSettings.apply {
-            isZoomControlsEnabled = false 
-            isCompassEnabled = true      
-            isScaleControlsEnabled = true 
-            isMyLocationButtonEnabled = false // 禁用原生定位按钮，后续自定义
+        // 配置定位蓝点样式
+        val myLocationStyle = MyLocationStyle().apply {
+            // 连续定位、且将视角移动到地图中心点，定位点依照设备方向旋转，并且会跟随设备移动。
+            myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
+            interval(2000) // 车机场景下，2秒更新一次位置较为平滑且省电
+            showMyLocation(true)
         }
-        // 设置地图渲染类型为夜间/科技感模式
+        
+        setMyLocationStyle(myLocationStyle)
+        isMyLocationEnabled = true // 激活定位图层
+        
+        uiSettings.apply {
+            isZoomControlsEnabled = false
+            isMyLocationButtonEnabled = false // 隐藏高德原生的、小的定位按钮
+            isCompassEnabled = true
+        }
         mapType = AMap.MAP_TYPE_NIGHT
     }
 }
 
 /**
- * 地图交互控制器实现类
+ * 跨模块地图控制接口
+ */
+interface MapController {
+    fun zoomIn()
+    fun zoomOut()
+    fun moveTo(location: GeoLocation)
+    fun locateMe() // 触发定位居中
+}
+
+/**
+ * 控制器实现类
  */
 class AMapController(private val aMap: AMap) : MapController {
     override fun zoomIn() {
@@ -139,18 +164,19 @@ class AMapController(private val aMap: AMap) : MapController {
     }
 
     override fun moveTo(location: GeoLocation) {
-        aMap.animateCamera(
-            CameraUpdateFactory.newLatLng(LatLng(location.latitude, location.longitude))
-        )
+        aMap.animateCamera(CameraUpdateFactory.newLatLng(LatLng(location.latitude, location.longitude)))
     }
-}
 
-/**
- * 跨模块地图控制抽象接口
- * 定义在 [:feature:map]，由 [app] 或其他业务模块调用
- */
-interface MapController {
-    fun zoomIn()
-    fun zoomOut()
-    fun moveTo(location: GeoLocation)
+    override fun locateMe() {
+        val location = aMap.myLocation
+        if (location != null) {
+            aMap.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(location.latitude, location.longitude), 15f
+                )
+            )
+        } else {
+            Log.w(TAG, "定位尝试失败：当前 SDK 尚未获取到有效位置")
+        }
+    }
 }
