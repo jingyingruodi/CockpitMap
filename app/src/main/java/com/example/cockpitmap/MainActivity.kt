@@ -7,8 +7,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
@@ -22,15 +24,16 @@ import com.example.cockpitmap.core.data.repository.LocationRepository
 import com.example.cockpitmap.feature.map.CustomMapStyle
 import com.example.cockpitmap.feature.map.MapController
 import com.example.cockpitmap.feature.map.MapRenderScreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
  * 应用程序主Activity。
  * 
  * [修改说明]：
- * 1. 修复了代码中残留的非法编辑符号。
- * 2. 在 QuickActions 中增加了地图样式切换按钮。
- * 3. 实现了样式循环切换逻辑。
+ * 1. 修复了代码中残留的非法编辑符号 (impor<caret>t)。
+ * 2. 增加了地图样式切换时的视觉提示 (Toast/Notification)。
+ * 3. 优化了样式切换逻辑，使其更加人性化。
  */
 class MainActivity : ComponentActivity() {
     
@@ -94,9 +97,14 @@ fun MainScreen(
     var mapController by remember { mutableStateOf<MapController?>(null) }
     val scope = rememberCoroutineScope()
     
-    // 用于样式循环切换的状态
+    // 样式切换相关状态
     val styles = CustomMapStyle.values()
+    val styleNames = listOf("标准模式", "夜间模式", "卫星模式", "导航模式")
     var currentStyleIndex by remember { mutableStateOf(1) } // 默认显示 NIGHT
+    
+    // 样式切换提示状态
+    var showStyleHint by remember { mutableStateOf(false) }
+    var hintText by remember { mutableStateOf("") }
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -109,6 +117,26 @@ fun MainScreen(
                 onControllerReady = { controller -> mapController = controller }
             )
 
+            // 中央样式切换提示
+            AnimatedVisibility(
+                visible = showStyleHint,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 160.dp)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text(
+                        text = hintText,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
             QuickActions(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -118,7 +146,16 @@ fun MainScreen(
                 onLocateMe = { mapController?.locateMe() },
                 onSwitchStyle = {
                     currentStyleIndex = (currentStyleIndex + 1) % styles.size
-                    mapController?.setMapStyle(styles[currentStyleIndex])
+                    val newStyle = styles[currentStyleIndex]
+                    mapController?.setMapStyle(newStyle)
+                    
+                    // 触发提示
+                    hintText = "已切换至：${styleNames[currentStyleIndex]}"
+                    scope.launch {
+                        showStyleHint = true
+                        delay(2000) // 提示显示2秒
+                        showStyleHint = false
+                    }
                 }
             )
         }
@@ -133,11 +170,12 @@ fun QuickActions(
     onLocateMe: () -> Unit,
     onSwitchStyle: () -> Unit
 ) {
-    Column(modifier = modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         FloatingActionButton(onClick = onZoomIn) { Text("+") }
         Spacer(Modifier.height(12.dp))
         FloatingActionButton(onClick = onZoomOut) { Text("-") }
         Spacer(Modifier.height(12.dp))
+        
         // 样式切换按钮
         FloatingActionButton(
             onClick = onSwitchStyle,
@@ -145,6 +183,7 @@ fun QuickActions(
         ) {
             Icon(Icons.Default.Layers, contentDescription = "切换样式")
         }
+        
         Spacer(Modifier.height(12.dp))
         FloatingActionButton(onClick = onLocateMe) {
             Icon(Icons.Default.MyLocation, contentDescription = "定位")
