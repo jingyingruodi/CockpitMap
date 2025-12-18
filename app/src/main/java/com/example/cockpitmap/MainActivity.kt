@@ -28,12 +28,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 应用程序主Activity。
+ * 应用程序主入口 Activity。
  * 
  * [修改说明]：
- * 1. 修复了代码中残留的非法编辑符号 (impor<caret>t)。
- * 2. 增加了地图样式切换时的视觉提示 (Toast/Notification)。
- * 3. 优化了样式切换逻辑，使其更加人性化。
+ * 1. 彻底修复了 `import` 语句中的拼写错误。
+ * 2. 完善了地图样式切换提示逻辑。
  */
 class MainActivity : ComponentActivity() {
     
@@ -45,7 +44,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             SimpleCockpitTheme {
                 var permissionsGranted by remember { mutableStateOf(false) }
-                // 观察缓存位置
                 val lastKnownLoc by locationRepository.lastKnownLocation.collectAsState(initial = null)
 
                 PermissionRequester(onAllGranted = {
@@ -97,12 +95,10 @@ fun MainScreen(
     var mapController by remember { mutableStateOf<MapController?>(null) }
     val scope = rememberCoroutineScope()
     
-    // 样式切换相关状态
     val styles = CustomMapStyle.values()
     val styleNames = listOf("标准模式", "夜间模式", "卫星模式", "导航模式")
-    var currentStyleIndex by remember { mutableStateOf(1) } // 默认显示 NIGHT
+    var currentStyleIndex by remember { mutableStateOf(1) } 
     
-    // 样式切换提示状态
     var showStyleHint by remember { mutableStateOf(false) }
     var hintText by remember { mutableStateOf("") }
 
@@ -117,7 +113,7 @@ fun MainScreen(
                 onControllerReady = { controller -> mapController = controller }
             )
 
-            // 中央样式切换提示
+            // 样式切换提示组件
             AnimatedVisibility(
                 visible = showStyleHint,
                 enter = fadeIn() + expandVertically(),
@@ -146,14 +142,12 @@ fun MainScreen(
                 onLocateMe = { mapController?.locateMe() },
                 onSwitchStyle = {
                     currentStyleIndex = (currentStyleIndex + 1) % styles.size
-                    val newStyle = styles[currentStyleIndex]
-                    mapController?.setMapStyle(newStyle)
+                    mapController?.setMapStyle(styles[currentStyleIndex])
                     
-                    // 触发提示
                     hintText = "已切换至：${styleNames[currentStyleIndex]}"
                     scope.launch {
                         showStyleHint = true
-                        delay(2000) // 提示显示2秒
+                        delay(2000)
                         showStyleHint = false
                     }
                 }
@@ -175,15 +169,12 @@ fun QuickActions(
         Spacer(Modifier.height(12.dp))
         FloatingActionButton(onClick = onZoomOut) { Text("-") }
         Spacer(Modifier.height(12.dp))
-        
-        // 样式切换按钮
         FloatingActionButton(
             onClick = onSwitchStyle,
             containerColor = MaterialTheme.colorScheme.tertiaryContainer
         ) {
             Icon(Icons.Default.Layers, contentDescription = "切换样式")
         }
-        
         Spacer(Modifier.height(12.dp))
         FloatingActionButton(onClick = onLocateMe) {
             Icon(Icons.Default.MyLocation, contentDescription = "定位")

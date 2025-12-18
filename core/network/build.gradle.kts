@@ -22,5 +22,9 @@ android {
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:model"))
-    implementation(libs.androidx.core.ktx) // 已修正：使用 .ktx 替换 -ktx
+    
+    // 高德搜索 SDK 依赖
+    implementation(libs.amap.search)
+    
+    implementation(libs.androidx.core.ktx)
 }
