@@ -58,49 +58,70 @@ fun MapRenderScreen(
     val isLocationLocked by viewModel.isLocationLocked.collectAsStateWithLifecycle()
     var hasInitialAutoCenter by remember { mutableStateOf(false) } 
 
+    // 使用 remember 保证 customSource 引用稳定
+    val customSource = remember { 
+        object : LocationSource {
+            var amapListener: LocationSource.OnLocationChangedListener? = null
+            override fun activate(p0: LocationSource.OnLocationChangedListener?) { amapListener = p0 }
+            override fun deactivate() { amapListener = null }
+            
+            fun pushSync(geo: GeoLocation) {
+                val loc = AMapLocation("cache").apply {
+                    latitude = geo.latitude
+                    longitude = geo.longitude
+                    accuracy = 10f // 提高精度以确保标识显示
+                    time = System.currentTimeMillis()
+                    // 直接使用硬编码值 1 (GPS类型)，规避 SDK 常量引用问题
+                    locationType = 1 
+                }
+                amapListener?.onLocationChanged(loc)
+            }
+        }
+    }
+
     val mapView = remember { 
         MapsInitializer.updatePrivacyShow(context, true, true)
         MapsInitializer.updatePrivacyAgree(context, true)
         MapView(context).apply { onCreate(null) }
     }
 
+    // 初始化位置与标识强行同步
     LaunchedEffect(initialLocation) {
-        if (initialLocation != null && !hasInitialAutoCenter) {
-            mapView.map.moveCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(initialLocation.latitude, initialLocation.longitude), 
-                    15f
-                )
-            )
-            hasInitialAutoCenter = true
+        if (initialLocation != null) {
+            val aMap = mapView.map
+            // 确保定位开启
+            aMap.setMyLocationEnabled(true)
+            
+            if (!hasInitialAutoCenter) {
+                aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(initialLocation.latitude, initialLocation.longitude), 15f))
+                hasInitialAutoCenter = true
+            }
+            
+            // 补偿推送：由于 SDK 内部初始化异步，多次推送确保标识一定能渲染出来
+            repeat(5) {
+                customSource.pushSync(initialLocation)
+                delay(500)
+            }
         }
     }
 
     DisposableEffect(lifecycle) {
         val aMap = mapView.map
         
-        val customSource = object : LocationSource {
-            private var amapListener: LocationSource.OnLocationChangedListener? = null
-            override fun activate(p0: LocationSource.OnLocationChangedListener?) { amapListener = p0 }
-            override fun deactivate() { amapListener = null }
-            fun push(loc: Location) {
-                val amapLoc = AMapLocation(loc).apply {
-                    bearing = loc.bearing
-                    accuracy = loc.accuracy
-                }
-                amapListener?.onLocationChanged(amapLoc)
-            }
-        }
-
         val nativeManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val nativeListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 if (location.latitude != 0.0) {
                     val geo = GeoLocation(location.latitude, location.longitude, "系统位置")
                     viewModel.updateLocation(geo)
-                    customSource.push(location)
-                    onLocationChanged(geo)
                     
+                    val amapLoc = AMapLocation(location).apply {
+                        bearing = location.bearing
+                        accuracy = location.accuracy
+                    }
+                    customSource.amapListener?.onLocationChanged(amapLoc)
+                    
+                    onLocationChanged(geo)
                     if (!hasInitialAutoCenter) {
                         aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(geo.latitude, geo.longitude), 15f))
                         hasInitialAutoCenter = true
@@ -180,6 +201,7 @@ private fun setupMapStyles(aMap: AMap) {
     aMap.setMyLocationStyle(style)
     aMap.getUiSettings().setZoomControlsEnabled(false)
     aMap.getUiSettings().setCompassEnabled(true)
+    aMap.setMapType(AMap.MAP_TYPE_NORMAL)
 }
 
 /**
@@ -194,9 +216,8 @@ class AMapController(
     private var currentPolyline: Polyline? = null
     private var onMarkerLongClickListener: ((GeoLocation) -> Unit)? = null
     
-    // 状态管理
-    private var isFollowingModeRequested = false // 业务上是否处于导航跟随模式
-    private var isTemporarilyPaused = false      // 用户是否正在通过触摸手动干预镜头
+    private var isFollowingModeRequested = false
+    private var isTemporarilyPaused = false
     private var autoReFollowJob: Job? = null
 
     init {
@@ -216,21 +237,17 @@ class AMapController(
             }
         }
 
-        // 相机变化监听
         aMap.setOnCameraChangeListener(object : AMap.OnCameraChangeListener {
             override fun onCameraChange(p0: CameraPosition?) {}
             override fun onCameraChangeFinish(position: CameraPosition?) {
-                // [关键修复]：仅当处于“用户干预暂停中”状态时，才启动回归倒计时
                 if (isFollowingModeRequested && isTemporarilyPaused) {
                     startAutoReFollowTimer()
                 }
             }
         })
         
-        // 物理触摸监听
-        aMap.setOnMapTouchListener { event ->
+        aMap.setOnMapTouchListener { 
             if (isFollowingModeRequested) {
-                // 用户物理触摸屏幕那一刻，标记为“干预开始”，并降级定位模式
                 isTemporarilyPaused = true
                 pauseFollowingInternal()
             }
@@ -252,18 +269,14 @@ class AMapController(
         autoReFollowJob?.cancel()
         autoReFollowJob = scope.launch {
             delay(5000) 
-            // 5 秒后，如果用户依然处于干预状态，则自动恢复
             if (isFollowingModeRequested && isTemporarilyPaused) {
                 restoreFollowingMode()
             }
         }
     }
 
-    /**
-     * 内部恢复跟随逻辑：重置干预标记并重新设置跟随样式
-     */
     private fun restoreFollowingMode() {
-        isTemporarilyPaused = false // [核心]：重置标记，防止 onCameraChangeFinish 再次触发回归
+        isTemporarilyPaused = false
         setFollowingMode(true)
     }
 
@@ -330,9 +343,7 @@ class AMapController(
     override fun setFollowingMode(enabled: Boolean) {
         isFollowingModeRequested = enabled
         if (enabled) {
-            // 如果是在自动恢复或首次进入，确保标记被重置
             isTemporarilyPaused = false 
-            
             aMap.setMapType(AMap.MAP_TYPE_NAVI)
             val style = MyLocationStyle().apply {
                 myLocationType(MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)

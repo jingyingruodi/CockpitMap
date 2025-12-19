@@ -1,6 +1,7 @@
 package com.example.cockpitmap
 
 import android.os.Bundle
+import android.location.Location
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -43,9 +44,9 @@ import java.util.UUID
  * 应用程序主 Activity。
  * 
  * [职责描述]：
- * 1. 初始化系统环境与 SDK。
- * 2. 协调各个 Feature 模块的交互（如搜索、收藏、导航）。
- * 3. 管理全局 HMI 状态流转。
+ * 1. 负责核心 Repository 的实例化与持久化策略调度。
+ * 2. 处理应用启动时的“视角回显”与权限检查。
+ * 3. 协调搜索、收藏、导航等跨模块 HMI 交互逻辑。
  */
 class MainActivity : ComponentActivity() {
     
@@ -57,7 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // SDK 隐私协议强制初始化
+        // 隐私合规初始化
         MapsInitializer.updatePrivacyShow(applicationContext, true, true)
         MapsInitializer.updatePrivacyAgree(applicationContext, true)
         ServiceSettings.updatePrivacyShow(applicationContext, true, true)
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(PermissionManager.hasAllPermissions(this)) 
                 }
                 
+                // 启动即开始收集持久化位置
                 val lastKnownLoc by locationRepository.lastKnownLocation.collectAsState(initial = null)
 
                 if (!permissionsGranted) {
@@ -80,6 +82,7 @@ class MainActivity : ComponentActivity() {
 
                 if (permissionsGranted) {
                     MainScreen(
+                        locRepo = locationRepository,
                         searchRepo = searchRepository,
                         favRepo = favoriteRepository,
                         routeRepo = routeRepository,
@@ -97,13 +100,11 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
 }
 
 /**
- * 车机主屏幕容器。
- * 
- * [职责描述]：
- * 组合地图、搜索、收藏及导航控制层，处理不同 HMI 状态下的组件可见性。
+ * 车机主屏容器组件。
  */
 @Composable
 fun MainScreen(
+    locRepo: LocationRepository,
     searchRepo: SearchRepository,
     favRepo: FavoriteRepository,
     routeRepo: RouteRepository,
@@ -134,16 +135,40 @@ fun MainScreen(
     val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
     var currentStyleIndex by remember { mutableIntStateOf(0) }
 
-    // 智能感应当前位置是否已在收藏夹中
-    val currentSavedLoc = remember(pendingNavigationLocation, savedLocations) {
-        savedLocations.find { 
+    // [加固]：将缓存位置强制同步至 ViewModel 以激活 UI 标识
+    LaunchedEffect(cachedLocation) {
+        if (cachedLocation != null && mapViewModel.currentLocation.value == null) {
+            mapViewModel.updateLocation(cachedLocation)
+        }
+    }
+
+    val isFavorited = remember(pendingNavigationLocation, savedLocations) {
+        savedLocations.any { 
             it.location.latitude == pendingNavigationLocation?.latitude && 
             it.location.longitude == pendingNavigationLocation?.longitude 
         }
     }
-    val isFavorited = currentSavedLoc != null
 
-    // 路径绘制联动
+    // 实时路径重算逻辑 (静默随动)
+    var lastPlannedLoc by remember { mutableStateOf<GeoLocation?>(null) }
+    LaunchedEffect(currentLoc, isNavigating) {
+        if (isNavigating && currentLoc != null && pendingNavigationLocation != null) {
+            val start = currentLoc!!
+            val dest = pendingNavigationLocation!!
+            val movedDistance = if (lastPlannedLoc == null) {
+                Float.MAX_VALUE
+            } else {
+                val results = FloatArray(1)
+                Location.distanceBetween(start.latitude, start.longitude, lastPlannedLoc!!.latitude, lastPlannedLoc!!.longitude, results)
+                results[0]
+            }
+            if (movedDistance > 30 && !isCalculating) {
+                routingViewModel.planRoute(start, dest)
+                lastPlannedLoc = start
+            }
+        }
+    }
+
     LaunchedEffect(routeInfo) {
         if (routeInfo != null) {
             mapController?.drawRoute(routeInfo!!)
@@ -153,17 +178,21 @@ fun MainScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 1. 底层地图渲染
+        // 1. 地图层
         MapRenderScreen(
             viewModel = mapViewModel,
             modifier = Modifier.fillMaxSize(),
             initialLocation = cachedLocation,
+            onLocationChanged = { newLoc ->
+                // [职责补全]：位置更新时立即触发持久化保存
+                scope.launch { locRepo.saveLastLocation(newLoc) }
+            },
             onControllerReady = { controller -> 
                 mapController = controller
             }
         )
 
-        // 2. 正式导航模式下的专用面板
+        // 2. 导航控制层
         if (isNavigating) {
             NavigationDashboard(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
@@ -172,11 +201,12 @@ fun MainScreen(
                     mapController?.setFollowingMode(false)
                     mapController?.clearRoute()
                     pendingNavigationLocation = null
+                    lastPlannedLoc = null
                 }
             )
         }
 
-        // 3. 基础探索模式下的 UI (搜索、收藏)
+        // 3. HMI 基础组件层
         if (!isNavigating) {
             FavoriteListOverlay(
                 visible = showFavorites,
@@ -205,9 +235,8 @@ fun MainScreen(
             )
         }
 
-        // 4. 底部动态确认与预览卡片
+        // 4. 底部动态控制逻辑
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
-            // 前往目的地确认
             if (!isNavigating && pendingNavigationLocation != null && routeInfo == null && !isCalculating) {
                 GoToConfirmationCard(
                     location = pendingNavigationLocation!!,
@@ -215,11 +244,16 @@ fun MainScreen(
                     onConfirm = {
                         currentLoc?.let { start ->
                             routingViewModel.planRoute(start, pendingNavigationLocation!!)
+                            lastPlannedLoc = start
                         }
                     },
                     onSave = {
                         if (isFavorited) {
-                            showUnfavoriteConfirmByLocation = currentSavedLoc
+                            val saved = savedLocations.find { 
+                                it.location.latitude == pendingNavigationLocation?.latitude &&
+                                it.location.longitude == pendingNavigationLocation?.longitude
+                            }
+                            showUnfavoriteConfirmByLocation = saved
                         } else {
                             showSaveFormByLocation = pendingNavigationLocation
                         }
@@ -231,13 +265,13 @@ fun MainScreen(
                 )
             }
 
-            // 算路 Loading 状态
-            CockpitLoadingHint(
-                visible = isCalculating,
-                text = "正在规划最佳路线..."
-            )
+            if (!isNavigating) {
+                CockpitLoadingHint(
+                    visible = isCalculating,
+                    text = "正在规划最佳路线..."
+                )
+            }
 
-            // 导航路线预览卡片
             if (!isNavigating && routeInfo != null && !isCalculating) {
                 RoutePreviewCard(
                     routeInfo = routeInfo!!,
@@ -289,7 +323,7 @@ fun MainScreen(
             )
         }
         
-        // 7. 快捷操作工具栏
+        // 7. 工具栏组件
         QuickActions(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
             onZoomIn = { mapController?.zoomIn() },
@@ -306,10 +340,7 @@ fun MainScreen(
 }
 
 /**
- * 取消收藏确认对话框。
- * 
- * [职责描述]：
- * 在用户点击已收藏地点的收藏按钮时弹出，防止误删常用地址。
+ * 取消收藏确认框。
  */
 @Composable
 fun UnfavoriteConfirmDialog(
@@ -322,24 +353,11 @@ fun UnfavoriteConfirmDialog(
             Column(modifier = Modifier.padding(20.dp).width(280.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(text = "取消收藏", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "是否从常用地址中移除 \"$locationName\"？",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                Text(text = "是否从常用地址中移除 \"$locationName\"？", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 Spacer(Modifier.height(24.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("取消")
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("移除")
-                    }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+                    Button(onClick = onConfirm, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("移除") }
                 }
             }
         }
@@ -347,7 +365,7 @@ fun UnfavoriteConfirmDialog(
 }
 
 /**
- * 常用地址悬浮列表。
+ * 常用地址悬浮面板组件。
  */
 @Composable
 fun FavoriteListOverlay(
@@ -365,30 +383,15 @@ fun FavoriteListOverlay(
         )
         if (visible) { Spacer(Modifier.height(4.dp)) }
         AnimatedVisibility(visible = visible, enter = slideInHorizontally(), exit = slideOutHorizontally()) {
-            CockpitSurface(
-                modifier = Modifier.width(200.dp).heightIn(max = 280.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
+            CockpitSurface(modifier = Modifier.width(200.dp).heightIn(max = 280.dp), shape = RoundedCornerShape(12.dp)) {
                 if (locations.isEmpty()) {
-                    Box(Modifier.padding(12.dp), contentAlignment = Alignment.Center) {
-                        Text("暂无收藏", fontSize = 12.sp)
-                    }
+                    Box(Modifier.padding(12.dp), contentAlignment = Alignment.Center) { Text("暂无收藏", fontSize = 12.sp) }
                 } else {
                     LazyColumn(contentPadding = PaddingValues(2.dp)) {
                         items(locations) { loc ->
                             ListItem(
                                 headlineContent = { Text(loc.name, fontSize = 13.sp) },
-                                leadingContent = {
-                                    Icon(
-                                        when(loc.type) {
-                                            LocationType.HOME -> Icons.Default.Home
-                                            LocationType.OFFICE -> Icons.Default.Business
-                                            else -> Icons.Default.Place
-                                        },
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
+                                leadingContent = { Icon(when(loc.type) { LocationType.HOME -> Icons.Default.Home; LocationType.OFFICE -> Icons.Default.Business; else -> Icons.Default.Place }, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                 modifier = Modifier.clickable { onItemClick(loc) }.heightIn(min = 40.dp)
                             )
                         }
@@ -427,54 +430,28 @@ fun SaveLocationDialog(
                 }
                 if (selectedType == LocationType.CUSTOM) {
                     Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = customName,
-                        onValueChange = { customName = it },
-                        label = { Text("名称", fontSize = 12.sp) },
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
-                    )
+                    OutlinedTextField(value = customName, onValueChange = { customName = it }, label = { Text("名称", fontSize = 12.sp) }, singleLine = true, textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
                 }
                 Spacer(Modifier.height(24.dp))
-                Button(
-                    onClick = {
-                        val finalName = if (selectedType == LocationType.CUSTOM) customName else {
-                            when(selectedType) {
-                                LocationType.HOME -> "家"; LocationType.OFFICE -> "公司"; else -> location.name ?: "收藏地点"
-                            }
-                        }
-                        onSave(SavedLocation(UUID.randomUUID().toString(), finalName, selectedType, location))
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("保存")
-                }
+                Button(onClick = { val finalName = if (selectedType == LocationType.CUSTOM) customName else { when(selectedType) { LocationType.HOME -> "家"; LocationType.OFFICE -> "公司"; else -> location.name ?: "收藏地点" } }; onSave(SavedLocation(UUID.randomUUID().toString(), finalName, selectedType, location)) }, modifier = Modifier.fillMaxWidth()) { Text("保存") }
             }
         }
     }
 }
 
 /**
- * 收藏类型选择项。
+ * 收藏分类单项。
  */
 @Composable
 fun TypeItem(icon: ImageVector, label: String, isSelected: Boolean, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }.padding(4.dp)
-    ) {
-        Icon(
-            imageVector = icon, 
-            contentDescription = null, 
-            tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-            modifier = Modifier.size(24.dp)
-        )
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onClick() }.padding(4.dp)) {
+        Icon(imageVector = icon, contentDescription = null, tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(24.dp))
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray)
     }
 }
 
 /**
- * 右侧快捷操作栏。
+ * 右侧快捷按钮组。
  */
 @Composable
 fun QuickActions(
@@ -489,12 +466,7 @@ fun QuickActions(
         Spacer(Modifier.height(6.dp))
         CockpitFloatingButton(onClick = onZoomOut, modifier = Modifier.size(40.dp), icon = { Text("-") })
         Spacer(Modifier.height(6.dp))
-        CockpitFloatingButton(
-            onClick = onSwitchStyle,
-            modifier = Modifier.size(40.dp),
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(18.dp)) }
-        )
+        CockpitFloatingButton(onClick = onSwitchStyle, modifier = Modifier.size(40.dp), containerColor = MaterialTheme.colorScheme.tertiaryContainer, icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(18.dp)) })
         Spacer(Modifier.height(6.dp))
         CockpitFloatingButton(onClick = onLocateMe, modifier = Modifier.size(40.dp), icon = { Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp)) })
     }
