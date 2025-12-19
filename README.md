@@ -27,6 +27,12 @@ CockpitMap 是一款专为 Android 车机系统设计的**现代导航地图程�
 - `:core:designsystem` - 车机标准 UI 组件库。
 - `:core:data` - 数据持久化与 Repository 实现。
 
+## 🛠 开发者调试信息 (Amap SDK)
+在申请或更换高德地图 SDK Key 时，请使用以下信息：
+- **包名 (Package Name)**: `com.example.cockpitmap`
+- **调试版 SHA1**: `12:E1:6F:BC:56:FE:62:8F:41:68:12:F7:4C:11:93:12:7D:F0:F8:7A`
+- **当前已配置 Key**: `4eeab95822b6a0e53f2835fcc4d87fc1` (已写入 AndroidManifest.xml)
+
 ## 🤝 协作开发
 1. **查阅文档**: 开发前请务必阅读 [模块化开发指南](./MODULES.md)。
 2. **分支管理**: 采用 Git Flow，Feature 开发请基于 `develop` 分支。
