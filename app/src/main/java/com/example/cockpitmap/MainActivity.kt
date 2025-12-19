@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.amap.api.maps.MapsInitializer
 import com.amap.api.services.core.ServiceSettings
@@ -111,7 +112,6 @@ fun MainScreen(
     
     val styles = CustomMapStyle.entries.toTypedArray()
     val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
-    // 将初始索引修改为 0 (标准模式)
     var currentStyleIndex by remember { mutableIntStateOf(0) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -128,7 +128,7 @@ fun MainScreen(
             }
         )
 
-        // 2. 常用地址列表 (左侧可收起)
+        // 2. 常用地址列表 (瘦身版)
         FavoriteListOverlay(
             visible = showFavorites,
             locations = savedLocations,
@@ -137,7 +137,7 @@ fun MainScreen(
                 showFavorites = false
             },
             onToggle = { showFavorites = !showFavorites },
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 24.dp)
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)
         )
 
         // 3. 搜索组件
@@ -154,30 +154,28 @@ fun MainScreen(
                     }
                 }
             },
-            modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
         )
 
-        // 4. 提示信息叠加层
+        // 4. 提示信息叠加层 (精简提示)
         Column(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 长按保存提示
             AnimatedVisibility(visible = showSaveHint) {
                 CockpitSurface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ) {
-                    Text(text = "💡 长按地址标点可保存常用地址", modifier = Modifier.padding(8.dp))
+                    Text(text = "💡 长按标点保存", style = MaterialTheme.typography.labelMedium)
                 }
             }
             
-            Spacer(Modifier.height(12.dp))
+            if (showStyleHint) { Spacer(Modifier.height(8.dp)) }
 
-            // 样式切换提示
             AnimatedVisibility(visible = showStyleHint) {
                 CockpitSurface {
-                    Text(text = styleHintText)
+                    Text(text = styleHintText, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -198,7 +196,7 @@ fun MainScreen(
 
         // 6. 右侧快捷操作
         QuickActions(
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp),
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
             onZoomIn = { mapController?.zoomIn() },
             onZoomOut = { mapController?.zoomOut() },
             onLocateMe = { mapController?.locateMe() },
@@ -229,26 +227,26 @@ fun FavoriteListOverlay(
     Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
         CockpitFloatingButton(
             onClick = onToggle,
-            icon = { Icon(if (visible) Icons.Default.Close else Icons.Default.Star, contentDescription = null) }
+            modifier = Modifier.size(48.dp), // 瘦身按钮
+            icon = { Icon(if (visible) Icons.Default.Close else Icons.Default.Star, contentDescription = null, modifier = Modifier.size(20.dp)) }
         )
         
-        Spacer(Modifier.height(12.dp))
+        if (visible) { Spacer(Modifier.height(8.dp)) }
 
         AnimatedVisibility(visible = visible, enter = slideInHorizontally(), exit = slideOutHorizontally()) {
             CockpitSurface(
-                modifier = Modifier.width(280.dp).heightIn(max = 400.dp),
+                modifier = Modifier.width(220.dp).heightIn(max = 320.dp), // 瘦身面板
                 shape = RoundedCornerShape(16.dp)
             ) {
                 if (locations.isEmpty()) {
-                    Box(Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
-                        Text("暂无常用地址", style = MaterialTheme.typography.bodyMedium)
+                    Box(Modifier.padding(16.dp), contentAlignment = Alignment.Center) {
+                        Text("暂无收藏", style = MaterialTheme.typography.labelMedium)
                     }
                 } else {
-                    LazyColumn(contentPadding = PaddingValues(8.dp)) {
+                    LazyColumn(contentPadding = PaddingValues(4.dp)) {
                         items(locations) { loc ->
                             ListItem(
-                                headlineContent = { Text(loc.name) },
-                                supportingContent = { Text(loc.type.name, style = MaterialTheme.typography.labelSmall) },
+                                headlineContent = { Text(loc.name, fontSize = 14.sp) }, // 瘦身文字
                                 leadingContent = {
                                     Icon(
                                         when(loc.type) {
@@ -256,10 +254,11 @@ fun FavoriteListOverlay(
                                             LocationType.OFFICE -> Icons.Default.Business
                                             else -> Icons.Default.Place
                                         },
-                                        contentDescription = null
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 },
-                                modifier = Modifier.clickable { onItemClick(loc) }
+                                modifier = Modifier.clickable { onItemClick(loc) }.heightIn(min = 48.dp)
                             )
                         }
                     }
@@ -281,12 +280,12 @@ fun SaveLocationDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         CockpitSurface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
-            Column(modifier = Modifier.padding(24.dp).width(320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "保存常用地址", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(16.dp))
+            Column(modifier = Modifier.padding(20.dp).width(280.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "保存地址", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(12.dp))
                 
-                Text(text = location.name ?: "未知地点", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(24.dp))
+                Text(text = location.name ?: "未知地点", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(16.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     TypeItem(Icons.Default.Home, "家", selectedType == LocationType.HOME) { selectedType = LocationType.HOME }
@@ -296,16 +295,17 @@ fun SaveLocationDialog(
                 }
 
                 if (selectedType == LocationType.CUSTOM) {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = customName,
                         onValueChange = { customName = it },
-                        label = { Text("地点名称") },
-                        singleLine = true
+                        label = { Text("名称", fontSize = 12.sp) },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
                     )
                 }
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(24.dp))
 
                 Button(
                     onClick = {
@@ -331,13 +331,13 @@ fun SaveLocationDialog(
 fun TypeItem(icon: ImageVector, label: String, isSelected: Boolean, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }.padding(8.dp)
+        modifier = Modifier.clickable { onClick() }.padding(4.dp)
     ) {
         Icon(
             imageVector = icon, 
             contentDescription = null, 
             tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size(24.dp)
         )
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray)
     }
@@ -352,18 +352,19 @@ fun QuickActions(
     onSwitchStyle: () -> Unit
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        CockpitFloatingButton(onClick = onZoomIn, icon = { Text("+") })
-        Spacer(Modifier.height(12.dp))
-        CockpitFloatingButton(onClick = onZoomOut, icon = { Text("-") })
-        Spacer(Modifier.height(12.dp))
+        CockpitFloatingButton(onClick = onZoomIn, modifier = Modifier.size(44.dp), icon = { Text("+") })
+        Spacer(Modifier.height(8.dp))
+        CockpitFloatingButton(onClick = onZoomOut, modifier = Modifier.size(44.dp), icon = { Text("-") })
+        Spacer(Modifier.height(8.dp))
         
         CockpitFloatingButton(
             onClick = onSwitchStyle,
+            modifier = Modifier.size(44.dp),
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            icon = { Icon(Icons.Default.Layers, contentDescription = "样式") }
+            icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(20.dp)) }
         )
         
-        Spacer(Modifier.height(12.dp))
-        CockpitFloatingButton(onClick = onLocateMe, icon = { Icon(Icons.Default.MyLocation, contentDescription = null) })
+        Spacer(Modifier.height(8.dp))
+        CockpitFloatingButton(onClick = onLocateMe, modifier = Modifier.size(44.dp), icon = { Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(20.dp)) })
     }
 }

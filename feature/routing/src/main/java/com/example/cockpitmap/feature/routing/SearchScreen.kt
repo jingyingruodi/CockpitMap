@@ -18,12 +18,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.cockpitmap.core.designsystem.CockpitSurface
 import com.example.cockpitmap.core.model.SearchSuggestion
 
 /**
- * 车载地点搜索界面（增强版）。
+ * 车载地点搜索界面（瘦身精修版）。
  */
 @Composable
 fun SearchScreen(
@@ -38,32 +39,33 @@ fun SearchScreen(
 
     Column(
         modifier = modifier
-            .fillMaxWidth(0.4f)
-            .padding(24.dp)
+            .width(300.dp) // 瘦身：固定宽度，避免遮挡过多地图
+            .padding(12.dp) // 瘦身：减小内边距
     ) {
         CockpitSurface {
             TextField(
                 value = query,
                 onValueChange = viewModel::onQueryChanged,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("搜索地点、加油站...") },
+                placeholder = { Text("搜索...", fontSize = 14.sp) }, // 瘦身：缩小占位符字体
                 leadingIcon = {
                     if (isSearching) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Search, contentDescription = null)
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
                     }
                 },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = viewModel::clearSearch) {
-                            Icon(Icons.Default.Close, contentDescription = null)
+                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
                     }
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                 singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -73,11 +75,10 @@ fun SearchScreen(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
-
         if (suggestions.isNotEmpty()) {
-            CockpitSurface(modifier = Modifier.weight(1f)) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+            Spacer(Modifier.height(8.dp))
+            CockpitSurface(modifier = Modifier.heightIn(max = 300.dp)) { // 瘦身：限制高度
+                LazyColumn {
                     items(suggestions) { suggestion ->
                         SuggestionItem(suggestion, onClick = {
                             focusManager.clearFocus()
@@ -97,14 +98,20 @@ private fun SuggestionItem(suggestion: SearchSuggestion, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 16.dp)
+            .padding(vertical = 12.dp, horizontal = 4.dp) // 瘦身：减小间距
     ) {
-        Text(text = suggestion.title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+        Text(
+            text = suggestion.title, 
+            style = MaterialTheme.typography.bodyMedium, 
+            color = Color.White,
+            maxLines = 1
+        )
         if (suggestion.snippet.isNotEmpty()) {
             Text(
                 text = suggestion.snippet,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.6f)
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.5f),
+                maxLines = 1
             )
         }
     }
