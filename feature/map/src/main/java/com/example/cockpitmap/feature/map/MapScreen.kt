@@ -34,8 +34,8 @@ import com.example.cockpitmap.core.model.MapController
 /**
  * 高德地图渲染核心组件。
  * 
- * [加固修复记录]：
- * 1. 移除所有残留的非法字符标志。
+ * [优化修复记录]：
+ * 1. 物理级彻底移除所有非法占位符。
  * 2. 采用 LocationSource 接管地图定位源，提升接入速度。
  * 3. hasInitialAutoCenter 确保首次定位成功后【仅执行一次】居中跳转。
  */
@@ -68,7 +68,7 @@ fun MapRenderScreen(
                 ghostMarkerState.value?.remove()
                 onLocationChanged(GeoLocation(location.latitude, location.longitude, "当前位置"))
                 
-                // 核心逻辑：接入成功后执行唯一一次的主动镜头居中
+                // 定位成功后执行唯一一次的主动居中，随后释放控制权
                 if (!hasInitialAutoCenter) {
                     aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(
                         LatLng(location.latitude, location.longitude), 15f
@@ -133,7 +133,7 @@ fun MapRenderScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(12.dp))
-                    Text(text = "高精度混合定位接入中...", fontSize = 14.sp)
+                    Text(text = "定位引擎接入中...", fontSize = 14.sp)
                 }
             }
         }

@@ -31,6 +31,7 @@ CockpitMap 是一款专为 Android 车机系统设计的**现代导航地图程�
 1. **查阅文档**: 开发前请务必阅读 [模块化开发指南](./MODULES.md)。
 2. **分支管理**: 采用 Git Flow，Feature 开发请基于 `develop` 分支。
 3. **提交规范**: 遵循 Angular Commit Message 规范。
+4. **AI使用规范**: AI 开发与协作规范请参见 [AI_RULES.md](./AI_RULES.md)。
 
 ## 🚀 快速开始
 1. `git clone https://github.com/your-repo/CockpitMap.git`
