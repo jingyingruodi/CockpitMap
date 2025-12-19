@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.amap.api.location.AMapLocation
 import com.amap.api.location.AMapLocationClient
 import com.amap.api.location.AMapLocationClientOption
@@ -38,14 +39,15 @@ import com.example.cockpitmap.core.model.GeoLocation
 import com.example.cockpitmap.core.model.MapController
 
 /**
- * [车载级混合定位引擎 - 原生视觉增强版]
+ * [HMI 地图渲染组件 - 重构标准版]
  * 
- * 核心逻辑：
- * 1. 彻底由原生 LocationManager 驱动高德地图蓝点绘制。
- * 2. 即使无 Key 也能显示位置图标、精度圈和车头方向。
+ * 变更：
+ * 1. 引入 MapViewModel 管理核心状态。
+ * 2. 遵循 UDF 数据流。
  */
 @Composable
 fun MapRenderScreen(
+    viewModel: MapViewModel, // 注入 ViewModel
     modifier: Modifier = Modifier,
     initialLocation: GeoLocation? = null,
     onLocationChanged: (GeoLocation) -> Unit = {},
@@ -54,7 +56,8 @@ fun MapRenderScreen(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     
-    var isLocationLocked by remember { mutableStateOf(false) }
+    // 状态从 ViewModel 收集
+    val isLocationLocked by viewModel.isLocationLocked.collectAsStateWithLifecycle()
     var hasInitialAutoCenter by remember { mutableStateOf(false) } 
 
     val mapView = remember { 
@@ -66,25 +69,14 @@ fun MapRenderScreen(
     DisposableEffect(lifecycle) {
         val aMap = mapView.map
         
-        // 核心：自定义原生定位驱动源
         val customSource = object : LocationSource {
             private var amapListener: LocationSource.OnLocationChangedListener? = null
-            
-            override fun activate(p0: LocationSource.OnLocationChangedListener?) {
-                amapListener = p0
-            }
-
-            override fun deactivate() {
-                amapListener = null
-            }
-
-            // 对外暴露推送接口
+            override fun activate(p0: LocationSource.OnLocationChangedListener?) { amapListener = p0 }
+            override fun deactivate() { amapListener = null }
             fun push(loc: Location) {
                 val amapLoc = AMapLocation(loc).apply {
-                    // 补全所有视觉要素
                     bearing = loc.bearing
                     accuracy = loc.accuracy
-                    altitude = loc.altitude
                 }
                 amapListener?.onLocationChanged(amapLoc)
             }
@@ -94,11 +86,13 @@ fun MapRenderScreen(
         val nativeListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 if (location.latitude != 0.0) {
-                    isLocationLocked = true
-                    // 驱动地图蓝点亮起与旋转
+                    val geo = GeoLocation(location.latitude, location.longitude, "系统位置")
+                    viewModel.updateLocation(geo) // 更新 ViewModel 状态
                     customSource.push(location)
+                    onLocationChanged(geo)
                     
-                    processLocationUpdate(location, aMap, "系统", hasInitialAutoCenter, onLocationChanged) {
+                    if (!hasInitialAutoCenter) {
+                        aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(geo.latitude, geo.longitude), 15f))
                         hasInitialAutoCenter = true
                     }
                 }
@@ -108,17 +102,8 @@ fun MapRenderScreen(
             override fun onProviderDisabled(p0: String) {}
         }
 
-        // 高德 SDK 仍作为静默精修器（如果 Key 有效）
-        val amapProvider = HybridLocationProvider(context) { location ->
-            isLocationLocked = true
-            customSource.push(location)
-            processLocationUpdate(location, aMap, "精修", hasInitialAutoCenter, onLocationChanged) {
-                hasInitialAutoCenter = true
-            }
-        }
-        
         setupNativeTracking(nativeManager, nativeListener)
-        aMap.setLocationSource(customSource) // 统一使用我们的自定义驱动源
+        aMap.setLocationSource(customSource)
         aMap.isMyLocationEnabled = true
 
         val observer = LifecycleEventObserver { _, event ->
@@ -127,7 +112,6 @@ fun MapRenderScreen(
                 Lifecycle.Event.ON_PAUSE -> mapView.onPause()
                 Lifecycle.Event.ON_DESTROY -> {
                     nativeManager.removeUpdates(nativeListener)
-                    amapProvider.deactivate()
                     mapView.onDestroy()
                 }
                 else -> {}
@@ -137,7 +121,6 @@ fun MapRenderScreen(
         onDispose { 
             lifecycle.removeObserver(observer)
             nativeManager.removeUpdates(nativeListener)
-            amapProvider.deactivate()
         }
     }
 
@@ -159,27 +142,10 @@ fun MapRenderScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(12.dp))
-                    Text(text = "定位启动中...", fontSize = 14.sp)
+                    Text(text = "多源定位启动中...", fontSize = 14.sp)
                 }
             }
         }
-    }
-}
-
-private fun processLocationUpdate(
-    location: Location,
-    aMap: AMap,
-    source: String,
-    autoCenterDone: Boolean,
-    onChanged: (GeoLocation) -> Unit,
-    onCenterSuccess: () -> Unit
-) {
-    onChanged(GeoLocation(location.latitude, location.longitude, "位置($source)"))
-    if (!autoCenterDone) {
-        aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(
-            LatLng(location.latitude, location.longitude), 15f
-        ))
-        onCenterSuccess()
     }
 }
 
@@ -189,44 +155,12 @@ private fun setupNativeTracking(manager: LocationManager, listener: LocationList
         manager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 1f, listener)
         manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, listener)
     } catch (e: Exception) {
-        Log.e("HybridLoc", "Native tracking failed: ${e.message}")
-    }
-}
-
-class HybridLocationProvider(
-    private val context: Context,
-    private val onAmapUpdate: (Location) -> Unit
-) {
-    private var amapClient: AMapLocationClient? = null
-
-    init {
-        try {
-            amapClient = AMapLocationClient(context).apply {
-                setLocationListener { amapLocation ->
-                    if (amapLocation != null && amapLocation.errorCode == 0 && amapLocation.latitude != 0.0) {
-                        onAmapUpdate(amapLocation)
-                    }
-                }
-                val options = AMapLocationClientOption().apply {
-                    locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
-                    interval = 2000
-                }
-                setLocationOption(options)
-                startLocation()
-            }
-        } catch (e: Exception) {}
-    }
-
-    fun deactivate() {
-        amapClient?.stopLocation()
-        amapClient?.onDestroy()
-        amapClient = null
+        Log.e("MapScreen", "Native track failed: ${e.message}")
     }
 }
 
 private fun setupMapStyles(aMap: AMap) {
     val style = MyLocationStyle().apply {
-        // [核心优化]：使用带有方向旋转的定位图标模式
         myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
         showMyLocation(true)
         strokeColor(Color.Transparent.hashCode())
