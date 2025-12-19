@@ -69,9 +69,8 @@ fun MapRenderScreen(
                 val loc = AMapLocation("cache").apply {
                     latitude = geo.latitude
                     longitude = geo.longitude
-                    accuracy = 10f // 提高精度以确保标识显示
+                    accuracy = 10f
                     time = System.currentTimeMillis()
-                    // 直接使用硬编码值 1 (GPS类型)，规避 SDK 常量引用问题
                     locationType = 1 
                 }
                 amapListener?.onLocationChanged(loc)
@@ -89,7 +88,6 @@ fun MapRenderScreen(
     LaunchedEffect(initialLocation) {
         if (initialLocation != null) {
             val aMap = mapView.map
-            // 确保定位开启
             aMap.setMyLocationEnabled(true)
             
             if (!hasInitialAutoCenter) {
@@ -97,7 +95,6 @@ fun MapRenderScreen(
                 hasInitialAutoCenter = true
             }
             
-            // 补偿推送：由于 SDK 内部初始化异步，多次推送确保标识一定能渲染出来
             repeat(5) {
                 customSource.pushSync(initialLocation)
                 delay(500)
@@ -317,9 +314,14 @@ class AMapController(
             useGradient(true)
         }
         currentPolyline = aMap.addPolyline(options)
-        val boundsBuilder = LatLngBounds.Builder()
-        points.forEach { boundsBuilder.include(it) }
-        aMap.animateCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 120))
+        
+        // [核心修复]：只有在非导航跟随模式下，才自动调整全路径缩放
+        // 在正式导航中，镜头应锁定在自车位置，不应因线条更新而飞走
+        if (!isFollowingModeRequested) {
+            val boundsBuilder = LatLngBounds.Builder()
+            points.forEach { boundsBuilder.include(it) }
+            aMap.animateCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 120))
+        }
     }
 
     override fun clearRoute() {
