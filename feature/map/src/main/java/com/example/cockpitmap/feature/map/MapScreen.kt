@@ -194,8 +194,9 @@ class AMapController(
     private var currentPolyline: Polyline? = null
     private var onMarkerLongClickListener: ((GeoLocation) -> Unit)? = null
     
-    // 自动回归逻辑相关的变量
-    private var isFollowingModeRequested = false
+    // 状态管理
+    private var isFollowingModeRequested = false // 业务上是否处于导航跟随模式
+    private var isTemporarilyPaused = false      // 用户是否正在通过触摸手动干预镜头
     private var autoReFollowJob: Job? = null
 
     init {
@@ -208,41 +209,35 @@ class AMapController(
             currentSearchMarker?.let { marker ->
                 val markerLatLng = marker.position
                 val results = FloatArray(1)
-                Location.distanceBetween(
-                    latLng.latitude, latLng.longitude,
-                    markerLatLng.latitude, markerLatLng.longitude,
-                    results
-                )
+                Location.distanceBetween(latLng.latitude, latLng.longitude, markerLatLng.latitude, markerLatLng.longitude, results)
                 if (results[0] < 100) {
-                    onMarkerLongClickListener?.invoke(
-                        GeoLocation(markerLatLng.latitude, markerLatLng.longitude, marker.title ?: "")
-                    )
+                    onMarkerLongClickListener?.invoke(GeoLocation(markerLatLng.latitude, markerLatLng.longitude, marker.title ?: ""))
                 }
             }
         }
 
-        // [核心优化]：监听镜头移动，实现手动干预后暂停跟随
+        // 相机变化监听
         aMap.setOnCameraChangeListener(object : AMap.OnCameraChangeListener {
             override fun onCameraChange(p0: CameraPosition?) {}
             override fun onCameraChangeFinish(position: CameraPosition?) {
-                // reason 1 表示用户手动手势操作（拖拽、缩放、旋转）
-                // 虽然 SDK 回调可能因版本略有不同，但我们通过状态判定
-                if (isFollowingModeRequested) {
+                // [关键修复]：仅当处于“用户干预暂停中”状态时，才启动回归倒计时
+                if (isFollowingModeRequested && isTemporarilyPaused) {
                     startAutoReFollowTimer()
                 }
             }
         })
         
-        // 专门监听触摸事件来判断“用户干预”
+        // 物理触摸监听
         aMap.setOnMapTouchListener { event ->
             if (isFollowingModeRequested) {
-                // 用户一碰地图，立即降级为普通定位模式，防止地图“抢镜头”
-                pauseFollowing()
+                // 用户物理触摸屏幕那一刻，标记为“干预开始”，并降级定位模式
+                isTemporarilyPaused = true
+                pauseFollowingInternal()
             }
         }
     }
 
-    private fun pauseFollowing() {
+    private fun pauseFollowingInternal() {
         autoReFollowJob?.cancel()
         val style = MyLocationStyle().apply {
             myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
@@ -256,11 +251,20 @@ class AMapController(
     private fun startAutoReFollowTimer() {
         autoReFollowJob?.cancel()
         autoReFollowJob = scope.launch {
-            delay(5000) // 5 秒无操作自动恢复
-            if (isFollowingModeRequested) {
-                setFollowingMode(true)
+            delay(5000) 
+            // 5 秒后，如果用户依然处于干预状态，则自动恢复
+            if (isFollowingModeRequested && isTemporarilyPaused) {
+                restoreFollowingMode()
             }
         }
+    }
+
+    /**
+     * 内部恢复跟随逻辑：重置干预标记并重新设置跟随样式
+     */
+    private fun restoreFollowingMode() {
+        isTemporarilyPaused = false // [核心]：重置标记，防止 onCameraChangeFinish 再次触发回归
+        setFollowingMode(true)
     }
 
     override fun zoomIn() { aMap.animateCamera(CameraUpdateFactory.zoomIn()) }
@@ -292,7 +296,6 @@ class AMapController(
     override fun drawRoute(route: RouteInfo) {
         currentPolyline?.remove()
         if (route.polyline.isEmpty()) return
-
         val points = route.polyline.map { LatLng(it.latitude, it.longitude) }
         val options = PolylineOptions().apply {
             addAll(points)
@@ -301,7 +304,6 @@ class AMapController(
             useGradient(true)
         }
         currentPolyline = aMap.addPolyline(options)
-        
         val boundsBuilder = LatLngBounds.Builder()
         points.forEach { boundsBuilder.include(it) }
         aMap.animateCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 120))
@@ -328,6 +330,9 @@ class AMapController(
     override fun setFollowingMode(enabled: Boolean) {
         isFollowingModeRequested = enabled
         if (enabled) {
+            // 如果是在自动恢复或首次进入，确保标记被重置
+            isTemporarilyPaused = false 
+            
             aMap.setMapType(AMap.MAP_TYPE_NAVI)
             val style = MyLocationStyle().apply {
                 myLocationType(MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)
@@ -351,6 +356,7 @@ class AMapController(
                 aMap.animateCamera(cameraUpdate)
             }
         } else {
+            isTemporarilyPaused = false
             autoReFollowJob?.cancel()
             aMap.setMapType(AMap.MAP_TYPE_NORMAL)
             val style = MyLocationStyle().apply {
