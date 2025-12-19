@@ -41,6 +41,11 @@ import java.util.UUID
 
 /**
  * 应用程序主 Activity。
+ * 
+ * [职责描述]：
+ * 1. 初始化系统环境与 SDK。
+ * 2. 协调各个 Feature 模块的交互（如搜索、收藏、导航）。
+ * 3. 管理全局 HMI 状态流转。
  */
 class MainActivity : ComponentActivity() {
     
@@ -52,6 +57,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // SDK 隐私协议强制初始化
         MapsInitializer.updatePrivacyShow(applicationContext, true, true)
         MapsInitializer.updatePrivacyAgree(applicationContext, true)
         ServiceSettings.updatePrivacyShow(applicationContext, true, true)
@@ -90,6 +96,12 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(), content = content)
 }
 
+/**
+ * 车机主屏幕容器。
+ * 
+ * [职责描述]：
+ * 组合地图、搜索、收藏及导航控制层，处理不同 HMI 状态下的组件可见性。
+ */
 @Composable
 fun MainScreen(
     searchRepo: SearchRepository,
@@ -122,7 +134,7 @@ fun MainScreen(
     val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
     var currentStyleIndex by remember { mutableIntStateOf(0) }
 
-    // 计算当前点是否已被收藏
+    // 智能感应当前位置是否已在收藏夹中
     val currentSavedLoc = remember(pendingNavigationLocation, savedLocations) {
         savedLocations.find { 
             it.location.latitude == pendingNavigationLocation?.latitude && 
@@ -131,6 +143,7 @@ fun MainScreen(
     }
     val isFavorited = currentSavedLoc != null
 
+    // 路径绘制联动
     LaunchedEffect(routeInfo) {
         if (routeInfo != null) {
             mapController?.drawRoute(routeInfo!!)
@@ -140,7 +153,7 @@ fun MainScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 1. 地图渲染
+        // 1. 底层地图渲染
         MapRenderScreen(
             viewModel = mapViewModel,
             modifier = Modifier.fillMaxSize(),
@@ -150,7 +163,7 @@ fun MainScreen(
             }
         )
 
-        // 2. 导航进行中的顶部面板
+        // 2. 正式导航模式下的专用面板
         if (isNavigating) {
             NavigationDashboard(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
@@ -163,7 +176,7 @@ fun MainScreen(
             )
         }
 
-        // 3. 非导航模式下的 UI
+        // 3. 基础探索模式下的 UI (搜索、收藏)
         if (!isNavigating) {
             FavoriteListOverlay(
                 visible = showFavorites,
@@ -192,9 +205,9 @@ fun MainScreen(
             )
         }
 
-        // 4. 底部交互控制层
+        // 4. 底部动态确认与预览卡片
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
-            // 前往确认 (修复点：补全 isFavorited 参数)
+            // 前往目的地确认
             if (!isNavigating && pendingNavigationLocation != null && routeInfo == null && !isCalculating) {
                 GoToConfirmationCard(
                     location = pendingNavigationLocation!!,
@@ -218,13 +231,13 @@ fun MainScreen(
                 )
             }
 
-            // 规划中加载提示
+            // 算路 Loading 状态
             CockpitLoadingHint(
                 visible = isCalculating,
                 text = "正在规划最佳路线..."
             )
 
-            // 导航路线预览
+            // 导航路线预览卡片
             if (!isNavigating && routeInfo != null && !isCalculating) {
                 RoutePreviewCard(
                     routeInfo = routeInfo!!,
@@ -240,7 +253,7 @@ fun MainScreen(
             }
         }
 
-        // 5. 保存与取消收藏对话框
+        // 5. 各种业务对话框
         if (showSaveFormByLocation != null) {
             SaveLocationDialog(
                 location = showSaveFormByLocation!!,
@@ -267,7 +280,7 @@ fun MainScreen(
             )
         }
 
-        // 6. 顶部样式提示
+        // 6. 全局提示层
         if (!isNavigating) {
             CockpitHintLayer(
                 visible = showStyleHint,
@@ -276,7 +289,7 @@ fun MainScreen(
             )
         }
         
-        // 7. 右侧快捷操作
+        // 7. 快捷操作工具栏
         QuickActions(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
             onZoomIn = { mapController?.zoomIn() },
@@ -292,6 +305,12 @@ fun MainScreen(
     }
 }
 
+/**
+ * 取消收藏确认对话框。
+ * 
+ * [职责描述]：
+ * 在用户点击已收藏地点的收藏按钮时弹出，防止误删常用地址。
+ */
 @Composable
 fun UnfavoriteConfirmDialog(
     locationName: String,
@@ -304,7 +323,7 @@ fun UnfavoriteConfirmDialog(
                 Text(text = "取消收藏", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "是否取消收藏 \"$locationName\"？",
+                    text = "是否从常用地址中移除 \"$locationName\"？",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -312,14 +331,14 @@ fun UnfavoriteConfirmDialog(
                 Spacer(Modifier.height(24.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("再想想")
+                        Text("取消")
                     }
                     Button(
                         onClick = onConfirm,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("确定")
+                        Text("移除")
                     }
                 }
             }
@@ -327,6 +346,9 @@ fun UnfavoriteConfirmDialog(
     }
 }
 
+/**
+ * 常用地址悬浮列表。
+ */
 @Composable
 fun FavoriteListOverlay(
     visible: Boolean,
@@ -377,6 +399,9 @@ fun FavoriteListOverlay(
     }
 }
 
+/**
+ * 常用地址保存表单。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SaveLocationDialog(
@@ -429,6 +454,9 @@ fun SaveLocationDialog(
     }
 }
 
+/**
+ * 收藏类型选择项。
+ */
 @Composable
 fun TypeItem(icon: ImageVector, label: String, isSelected: Boolean, onClick: () -> Unit) {
     Column(
@@ -445,6 +473,9 @@ fun TypeItem(icon: ImageVector, label: String, isSelected: Boolean, onClick: () 
     }
 }
 
+/**
+ * 右侧快捷操作栏。
+ */
 @Composable
 fun QuickActions(
     modifier: Modifier = Modifier,
