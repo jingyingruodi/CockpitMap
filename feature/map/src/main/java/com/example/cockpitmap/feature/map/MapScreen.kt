@@ -60,6 +60,7 @@ fun MapRenderScreen(
         MapView(context).apply { onCreate(null) }
     }
 
+    // 初始化位置处理
     LaunchedEffect(initialLocation) {
         if (initialLocation != null && !hasInitialAutoCenter) {
             mapView.map.moveCamera(
@@ -176,7 +177,7 @@ private fun setupMapStyles(aMap: AMap) {
     aMap.setMyLocationStyle(style)
     aMap.getUiSettings().setZoomControlsEnabled(false)
     aMap.getUiSettings().setCompassEnabled(true)
-    aMap.setMapType(AMap.MAP_TYPE_NORMAL)
+    // 默认保持为普通模式
 }
 
 /**
@@ -278,24 +279,39 @@ class AMapController(
 
     override fun setFollowingMode(enabled: Boolean) {
         if (enabled) {
-            // [核心修复]：强制切换为位置、视角双跟随模式
+            // 1. 切换为导航专用样式 (MAP_TYPE_NAVI)
+            aMap.setMapType(AMap.MAP_TYPE_NAVI)
+            
+            // 2. 配置强锁定跟随模式
             val style = MyLocationStyle().apply {
-                // LOCATION_TYPE_MAP_ROTATE 会强制地图中心保持在自车坐标，且随车头旋转
+                // LOCATION_TYPE_MAP_ROTATE: 连续定位、蓝点带动地图移动，且地图始终随车头旋转
                 myLocationType(MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)
                 showMyLocation(true)
                 strokeColor(AndroidColor.TRANSPARENT)
                 radiusFillColor(AndroidColor.TRANSPARENT)
+                // 导航蓝点间隔 1s 更新位置，保证平滑性
+                interval(1000)
             }
             aMap.setMyLocationStyle(style)
             
-            // 立即对齐当前位置
+            // 3. 立即将相机对齐到当前坐标，并设置 3D 视角
             val loc = aMap.myLocation
             if (loc != null && loc.latitude != 0.0) {
-                aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 18f))
+                val cameraUpdate = CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.builder()
+                        .target(LatLng(loc.latitude, loc.longitude))
+                        .zoom(18f)   // 导航缩放级别
+                        .tilt(45f)   // 倾斜视角
+                        .bearing(loc.bearing) // 初始朝向同步
+                        .build()
+                )
+                aMap.animateCamera(cameraUpdate)
             }
-            aMap.animateCamera(CameraUpdateFactory.changeTilt(45f)) // 设置导航视角倾斜
         } else {
-            // 回到普通预览模式
+            // 1. 恢复普通地图样式
+            aMap.setMapType(AMap.MAP_TYPE_NORMAL)
+            
+            // 2. 恢复普通定位模式 (LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER: 蓝点转地图不转)
             val style = MyLocationStyle().apply {
                 myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
                 showMyLocation(true)
@@ -303,7 +319,9 @@ class AMapController(
                 radiusFillColor(AndroidColor.TRANSPARENT)
             }
             aMap.setMyLocationStyle(style)
-            aMap.animateCamera(CameraUpdateFactory.changeTilt(0f)) // 恢复平视
+            
+            // 3. 恢复平视视角
+            aMap.animateCamera(CameraUpdateFactory.changeTilt(0f))
         }
     }
 }

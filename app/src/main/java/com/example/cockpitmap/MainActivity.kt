@@ -74,7 +74,6 @@ class MainActivity : ComponentActivity() {
 
                 if (permissionsGranted) {
                     MainScreen(
-                        locRepo = locationRepository,
                         searchRepo = searchRepository,
                         favRepo = favoriteRepository,
                         routeRepo = routeRepository,
@@ -93,7 +92,6 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun MainScreen(
-    locRepo: LocationRepository,
     searchRepo: SearchRepository,
     favRepo: FavoriteRepository,
     routeRepo: RouteRepository,
@@ -106,6 +104,7 @@ fun MainScreen(
     
     var mapController by remember { mutableStateOf<MapController?>(null) }
     var showSaveFormByLocation by remember { mutableStateOf<GeoLocation?>(null) }
+    var showUnfavoriteConfirmByLocation by remember { mutableStateOf<SavedLocation?>(null) }
     
     var showStyleHint by remember { mutableStateOf(false) }
     var styleHintText by remember { mutableStateOf("") }
@@ -122,6 +121,15 @@ fun MainScreen(
     val styles = CustomMapStyle.entries.toTypedArray()
     val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
     var currentStyleIndex by remember { mutableIntStateOf(0) }
+
+    // 计算当前点是否已被收藏
+    val currentSavedLoc = remember(pendingNavigationLocation, savedLocations) {
+        savedLocations.find { 
+            it.location.latitude == pendingNavigationLocation?.latitude && 
+            it.location.longitude == pendingNavigationLocation?.longitude 
+        }
+    }
+    val isFavorited = currentSavedLoc != null
 
     LaunchedEffect(routeInfo) {
         if (routeInfo != null) {
@@ -155,7 +163,7 @@ fun MainScreen(
             )
         }
 
-        // 3. 非导航模式下的 UI (搜索与收藏)
+        // 3. 非导航模式下的 UI
         if (!isNavigating) {
             FavoriteListOverlay(
                 visible = showFavorites,
@@ -184,18 +192,25 @@ fun MainScreen(
             )
         }
 
-        // 4. 底部交互层
+        // 4. 底部交互控制层
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
-            // A. 前往确认
+            // 前往确认 (修复点：补全 isFavorited 参数)
             if (!isNavigating && pendingNavigationLocation != null && routeInfo == null && !isCalculating) {
                 GoToConfirmationCard(
                     location = pendingNavigationLocation!!,
+                    isFavorited = isFavorited,
                     onConfirm = {
                         currentLoc?.let { start ->
                             routingViewModel.planRoute(start, pendingNavigationLocation!!)
                         }
                     },
-                    onSave = { showSaveFormByLocation = pendingNavigationLocation },
+                    onSave = {
+                        if (isFavorited) {
+                            showUnfavoriteConfirmByLocation = currentSavedLoc
+                        } else {
+                            showSaveFormByLocation = pendingNavigationLocation
+                        }
+                    },
                     onCancel = {
                         pendingNavigationLocation = null
                         mapController?.clearMarkers()
@@ -203,13 +218,13 @@ fun MainScreen(
                 )
             }
 
-            // B. 规划中提示
+            // 规划中加载提示
             CockpitLoadingHint(
                 visible = isCalculating,
                 text = "正在规划最佳路线..."
             )
 
-            // C. 路径预览 (点击“开始导航”真正生效的地方)
+            // 导航路线预览
             if (!isNavigating && routeInfo != null && !isCalculating) {
                 RoutePreviewCard(
                     routeInfo = routeInfo!!,
@@ -225,7 +240,7 @@ fun MainScreen(
             }
         }
 
-        // 5. 保存表单
+        // 5. 保存与取消收藏对话框
         if (showSaveFormByLocation != null) {
             SaveLocationDialog(
                 location = showSaveFormByLocation!!,
@@ -239,7 +254,20 @@ fun MainScreen(
             )
         }
 
-        // 6. 顶部样式提示 (仅在非导航时显示)
+        if (showUnfavoriteConfirmByLocation != null) {
+            UnfavoriteConfirmDialog(
+                locationName = showUnfavoriteConfirmByLocation!!.name,
+                onDismiss = { showUnfavoriteConfirmByLocation = null },
+                onConfirm = {
+                    scope.launch {
+                        favRepo.deleteLocation(showUnfavoriteConfirmByLocation!!.id)
+                        showUnfavoriteConfirmByLocation = null
+                    }
+                }
+            )
+        }
+
+        // 6. 顶部样式提示
         if (!isNavigating) {
             CockpitHintLayer(
                 visible = showStyleHint,
@@ -261,6 +289,41 @@ fun MainScreen(
                 scope.launch { showStyleHint = true; delay(2000); showStyleHint = false }
             }
         )
+    }
+}
+
+@Composable
+fun UnfavoriteConfirmDialog(
+    locationName: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        CockpitSurface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(modifier = Modifier.padding(20.dp).width(280.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "取消收藏", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "是否取消收藏 \"$locationName\"？",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("再想想")
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("确定")
+                    }
+                }
+            }
+        }
     }
 }
 

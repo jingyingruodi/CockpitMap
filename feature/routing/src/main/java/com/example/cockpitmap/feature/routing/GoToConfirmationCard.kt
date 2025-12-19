@@ -2,6 +2,7 @@ package com.example.cockpitmap.feature.routing
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
@@ -17,11 +18,12 @@ import com.example.cockpitmap.core.model.GeoLocation
 /**
  * 前往目的地确认卡片（极致瘦身版）。
  * 
- * 展示路径规划前的确认信息，并提供收藏入口。
+ * 展示路径规划前的确认信息，并支持收藏状态感应。
  */
 @Composable
 fun GoToConfirmationCard(
     location: GeoLocation,
+    isFavorited: Boolean, // [新增]：是否已收藏
     onConfirm: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
@@ -29,7 +31,7 @@ fun GoToConfirmationCard(
 ) {
     CockpitSurface(
         modifier = modifier
-            .width(280.dp) // 瘦身：从 360dp 降至 280dp
+            .width(280.dp)
             .padding(8.dp)
     ) {
         Column(modifier = Modifier.padding(4.dp)) {
@@ -40,7 +42,7 @@ fun GoToConfirmationCard(
             )
             Text(
                 text = location.name ?: "未知地点",
-                style = MaterialTheme.typography.titleMedium, // 缩小标题
+                style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 maxLines = 1
             )
@@ -63,15 +65,15 @@ fun GoToConfirmationCard(
                 
                 Spacer(Modifier.weight(1f))
 
-                // 收藏
+                // 收藏按钮：根据状态切换实心/空心图标
                 IconButton(
                     onClick = onSave,
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FavoriteBorder, 
+                        imageVector = if (isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
                         contentDescription = null, 
-                        tint = Color.White,
+                        tint = if (isFavorited) MaterialTheme.colorScheme.primary else Color.White,
                         modifier = Modifier.size(18.dp)
                     )
                 }
