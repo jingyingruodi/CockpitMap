@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.amap.api.maps.MapsInitializer
+import com.amap.api.services.core.ServiceSettings
 import com.example.cockpitmap.core.common.CockpitPermissionRequester
 import com.example.cockpitmap.core.common.PermissionManager
 import com.example.cockpitmap.core.data.repository.LocationRepository
@@ -41,6 +43,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // [核心加固]：在界面加载前强制激活所有高德 SDK 隐私协议
+        MapsInitializer.updatePrivacyShow(applicationContext, true, true)
+        MapsInitializer.updatePrivacyAgree(applicationContext, true)
+        ServiceSettings.updatePrivacyShow(applicationContext, true, true)
+        ServiceSettings.updatePrivacyAgree(applicationContext, true)
+        
         enableEdgeToEdge()
         setContent {
             SimpleCockpitTheme {
@@ -85,7 +94,6 @@ fun MainScreen(
     searchRepo: SearchRepository,
     cachedLocation: com.example.cockpitmap.core.model.GeoLocation?
 ) {
-    // 实例化 Feature 模块的 ViewModel
     val mapViewModel = remember { MapViewModel() }
     val searchViewModel = remember { SearchViewModel(searchRepo) }
     
@@ -100,7 +108,6 @@ fun MainScreen(
     var hintText by remember { mutableStateOf("") }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 地图渲染（注入 ViewModel）
         MapRenderScreen(
             viewModel = mapViewModel,
             modifier = Modifier.fillMaxSize(),

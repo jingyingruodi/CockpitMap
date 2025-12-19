@@ -41,7 +41,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:model"))
     implementation(project(":core:data"))
-    implementation(project(":core:network")) // 补全网络依赖，确保 SearchDataSource 可访问
+    implementation(project(":core:network"))
     
     implementation(project(":feature:map"))
     implementation(project(":feature:routing"))
@@ -56,6 +56,10 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.activity.compose)
+    
+    // 高德 SDK (补全初始化所需的依赖)
+    implementation(libs.amap.maps)
+    implementation(libs.amap.search)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
