@@ -24,7 +24,7 @@ import com.example.cockpitmap.core.designsystem.CockpitSurface
 import com.example.cockpitmap.core.model.SearchSuggestion
 
 /**
- * 车载地点搜索界面（瘦身精修版）。
+ * 车载地点搜索界面（极致精修版）。
  */
 @Composable
 fun SearchScreen(
@@ -39,33 +39,33 @@ fun SearchScreen(
 
     Column(
         modifier = modifier
-            .width(300.dp) // 瘦身：固定宽度，避免遮挡过多地图
-            .padding(12.dp) // 瘦身：减小内边距
+            .width(260.dp) // 极致瘦身：从 300dp 降至 260dp
+            .padding(8.dp)
     ) {
         CockpitSurface {
             TextField(
                 value = query,
                 onValueChange = viewModel::onQueryChanged,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("搜索...", fontSize = 14.sp) }, // 瘦身：缩小占位符字体
+                modifier = Modifier.fillMaxWidth().heightIn(max = 48.dp), // 限制高度
+                placeholder = { Text("搜索...", fontSize = 13.sp) },
                 leadingIcon = {
                     if (isSearching) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                 },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
-                        IconButton(onClick = viewModel::clearSearch) {
-                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                        IconButton(onClick = viewModel::clearSearch, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
                     }
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -76,15 +76,15 @@ fun SearchScreen(
         }
 
         if (suggestions.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            CockpitSurface(modifier = Modifier.heightIn(max = 300.dp)) { // 瘦身：限制高度
+            Spacer(Modifier.height(4.dp))
+            CockpitSurface(modifier = Modifier.heightIn(max = 240.dp)) {
                 LazyColumn {
                     items(suggestions) { suggestion ->
                         SuggestionItem(suggestion, onClick = {
                             focusManager.clearFocus()
                             onSuggestionClick(suggestion)
                         })
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
                     }
                 }
             }
@@ -98,19 +98,19 @@ private fun SuggestionItem(suggestion: SearchSuggestion, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 4.dp) // 瘦身：减小间距
+            .padding(vertical = 8.dp, horizontal = 4.dp)
     ) {
         Text(
             text = suggestion.title, 
-            style = MaterialTheme.typography.bodyMedium, 
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp), 
             color = Color.White,
             maxLines = 1
         )
         if (suggestion.snippet.isNotEmpty()) {
             Text(
                 text = suggestion.snippet,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.5f),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                color = Color.White.copy(alpha = 0.4f),
                 maxLines = 1
             )
         }
