@@ -168,7 +168,8 @@ private fun setupMapStyles(aMap: AMap) {
     aMap.setMyLocationStyle(style)
     aMap.uiSettings.isZoomControlsEnabled = false
     aMap.uiSettings.isCompassEnabled = true
-    aMap.mapType = AMap.MAP_TYPE_NIGHT
+    // 默认修改为标准模式
+    aMap.mapType = AMap.MAP_TYPE_NORMAL
 }
 
 /**
@@ -185,14 +186,9 @@ class AMapController(private val aMap: AMap) : MapController {
             true
         }
         
-        // 模拟长按 Marker：高德 SDK 对 Marker 只有 Click 监听，
-        // 这里我们通过 AMap 的 OnMarkerClickListener 配合长按地图逻辑或者
-        // 简单的点击触发（车载场景下点击通常即为选中，长按地图也可以）。
-        // 但为了符合用户要求，我们监听地图长按并在 Marker 附近时触发。
         aMap.setOnMapLongClickListener { latLng ->
             currentSearchMarker?.let { marker ->
                 val markerLatLng = marker.position
-                // 如果长按位置在 Marker 附近（约 100 米内）
                 val results = FloatArray(1)
                 Location.distanceBetween(
                     latLng.latitude, latLng.longitude,

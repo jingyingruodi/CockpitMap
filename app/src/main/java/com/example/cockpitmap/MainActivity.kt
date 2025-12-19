@@ -102,10 +102,17 @@ fun MainScreen(
     
     var mapController by remember { mutableStateOf<MapController?>(null) }
     var showSaveFormByLocation by remember { mutableStateOf<GeoLocation?>(null) }
-    var showHint by remember { mutableStateOf(false) }
+    var showSaveHint by remember { mutableStateOf(false) }
+    var showStyleHint by remember { mutableStateOf(false) }
+    var styleHintText by remember { mutableStateOf("") }
     var showFavorites by remember { mutableStateOf(false) }
     
     val savedLocations by favRepo.savedLocations.collectAsState(initial = emptyList())
+    
+    val styles = CustomMapStyle.entries.toTypedArray()
+    val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
+    // 将初始索引修改为 0 (标准模式)
+    var currentStyleIndex by remember { mutableIntStateOf(0) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 1. 地图渲染
@@ -141,25 +148,37 @@ fun MainScreen(
                     mapController?.showMarker(loc)
                     searchViewModel.clearSearch()
                     scope.launch {
-                        showHint = true
+                        showSaveHint = true
                         delay(5000)
-                        showHint = false
+                        showSaveHint = false
                     }
                 }
             },
             modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
         )
 
-        // 4. 左下角长按提示
-        AnimatedVisibility(
-            visible = showHint,
-            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
+        // 4. 提示信息叠加层
+        Column(
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            CockpitSurface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-            ) {
-                Text("💡 长按地址标点可保存常用地址", modifier = Modifier.padding(8.dp))
+            // 长按保存提示
+            AnimatedVisibility(visible = showSaveHint) {
+                CockpitSurface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ) {
+                    Text(text = "💡 长按地址标点可保存常用地址", modifier = Modifier.padding(8.dp))
+                }
+            }
+            
+            Spacer(Modifier.height(12.dp))
+
+            // 样式切换提示
+            AnimatedVisibility(visible = showStyleHint) {
+                CockpitSurface {
+                    Text(text = styleHintText)
+                }
             }
         }
 
@@ -182,7 +201,19 @@ fun MainScreen(
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp),
             onZoomIn = { mapController?.zoomIn() },
             onZoomOut = { mapController?.zoomOut() },
-            onLocateMe = { mapController?.locateMe() }
+            onLocateMe = { mapController?.locateMe() },
+            onSwitchStyle = {
+                currentStyleIndex = (currentStyleIndex + 1) % styles.size
+                val newStyle = styles[currentStyleIndex]
+                mapController?.setMapStyle(newStyle.type)
+                
+                styleHintText = "视图：${styleNames[currentStyleIndex]}"
+                scope.launch {
+                    showStyleHint = true
+                    delay(2000)
+                    showStyleHint = false
+                }
+            }
         )
     }
 }
@@ -317,12 +348,21 @@ fun QuickActions(
     modifier: Modifier = Modifier,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
-    onLocateMe: () -> Unit
+    onLocateMe: () -> Unit,
+    onSwitchStyle: () -> Unit
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         CockpitFloatingButton(onClick = onZoomIn, icon = { Text("+") })
         Spacer(Modifier.height(12.dp))
         CockpitFloatingButton(onClick = onZoomOut, icon = { Text("-") })
+        Spacer(Modifier.height(12.dp))
+        
+        CockpitFloatingButton(
+            onClick = onSwitchStyle,
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            icon = { Icon(Icons.Default.Layers, contentDescription = "样式") }
+        )
+        
         Spacer(Modifier.height(12.dp))
         CockpitFloatingButton(onClick = onLocateMe, icon = { Icon(Icons.Default.MyLocation, contentDescription = null) })
     }
