@@ -19,11 +19,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.cockpitmap.core.data.repository.LocationRepository
+import com.example.cockpitmap.core.data.repository.SearchRepository
 import com.example.cockpitmap.core.designsystem.CockpitFloatingButton
 import com.example.cockpitmap.core.designsystem.CockpitSurface
 import com.example.cockpitmap.core.model.CustomMapStyle
 import com.example.cockpitmap.core.model.MapController
+import com.example.cockpitmap.core.network.SearchDataSource
 import com.example.cockpitmap.feature.map.MapRenderScreen
+import com.example.cockpitmap.feature.routing.SearchScreen
+import com.example.cockpitmap.feature.routing.SearchViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -32,7 +36,9 @@ import kotlinx.coroutines.launch
  */
 class MainActivity : ComponentActivity() {
     
+    // 初始化仓库。SearchDataSource 需要 applicationContext。
     private val locationRepository by lazy { LocationRepository(applicationContext) }
+    private val searchRepository by lazy { SearchRepository(SearchDataSource(applicationContext)) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +54,8 @@ class MainActivity : ComponentActivity() {
 
                 if (permissionsGranted) {
                     MainScreen(
-                        repository = locationRepository,
+                        locRepo = locationRepository,
+                        searchRepo = searchRepository,
                         cachedLocation = lastKnownLoc
                     )
                 } else {
@@ -84,66 +91,79 @@ fun SimpleCockpitTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun MainScreen(
-    repository: LocationRepository,
+    locRepo: LocationRepository,
+    searchRepo: SearchRepository,
     cachedLocation: com.example.cockpitmap.core.model.GeoLocation?
 ) {
     var mapController by remember { mutableStateOf<MapController?>(null) }
     val scope = rememberCoroutineScope()
     
-    // 严格对应 CustomMapStyle 的定义顺序
+    // 手动创建 ViewModel 实例
+    val searchViewModel = remember { SearchViewModel(searchRepo) }
+    
     val styles = CustomMapStyle.entries.toTypedArray()
     val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
-    var currentStyleIndex by remember { mutableIntStateOf(2) } // 默认显示 NIGHT (Index 2)
+    var currentStyleIndex by remember { mutableIntStateOf(2) } 
     
     var showStyleHint by remember { mutableStateOf(false) }
     var hintText by remember { mutableStateOf("") }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            MapRenderScreen(
-                modifier = Modifier.fillMaxSize(),
-                initialLocation = cachedLocation,
-                onLocationChanged = { newLoc ->
-                    scope.launch { repository.saveLastLocation(newLoc) }
-                },
-                onControllerReady = { controller -> mapController = controller }
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 1. 地图层
+        MapRenderScreen(
+            modifier = Modifier.fillMaxSize(),
+            initialLocation = cachedLocation,
+            onLocationChanged = { newLoc ->
+                scope.launch { locRepo.saveLastLocation(newLoc) }
+            },
+            onControllerReady = { controller -> mapController = controller }
+        )
 
-            AnimatedVisibility(
-                visible = showStyleHint,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 160.dp)
-            ) {
-                CockpitSurface {
-                    Text(
-                        text = hintText,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+        // 2. 搜索层
+        SearchScreen(
+            viewModel = searchViewModel,
+            onSuggestionClick = { suggestion ->
+                // [修复：强制非空校验]
+                suggestion.location?.let { loc ->
+                    mapController?.moveTo(loc)
+                }
+            },
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+
+        // 3. 视觉提示层
+        AnimatedVisibility(
+            visible = showStyleHint,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 160.dp)
+        ) {
+            CockpitSurface {
+                Text(text = hintText, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        // 4. 交互操作层
+        QuickActions(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 24.dp),
+            onZoomIn = { mapController?.zoomIn() },
+            onZoomOut = { mapController?.zoomOut() },
+            onLocateMe = { mapController?.locateMe() },
+            onSwitchStyle = {
+                currentStyleIndex = (currentStyleIndex + 1) % styles.size
+                val newStyle = styles[currentStyleIndex]
+                mapController?.setMapStyle(newStyle.type)
+                
+                hintText = "已切换至：${styleNames[currentStyleIndex]}"
+                scope.launch {
+                    showStyleHint = true
+                    delay(2000)
+                    showStyleHint = false
                 }
             }
-
-            QuickActions(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 24.dp),
-                onZoomIn = { mapController?.zoomIn() },
-                onZoomOut = { mapController?.zoomOut() },
-                onLocateMe = { mapController?.locateMe() },
-                onSwitchStyle = {
-                    currentStyleIndex = (currentStyleIndex + 1) % styles.size
-                    val newStyle = styles[currentStyleIndex]
-                    mapController?.setMapStyle(newStyle.type)
-                    
-                    hintText = "已切换至：${styleNames[currentStyleIndex]}"
-                    scope.launch {
-                        showStyleHint = true
-                        delay(2000)
-                        showStyleHint = false
-                    }
-                }
-            )
-        }
+        )
     }
 }
 

@@ -1,16 +1,16 @@
 -- Merging decision tree log ---
 manifest
-ADDED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml:2:13-83
-INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml:2:13-83
+ADDED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml:2:13-83
+INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml:2:13-83
 	package
-		INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml
+		INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml
 	xmlns:android
-		ADDED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml:2:23-81
+		ADDED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml:2:23-81
 uses-sdk
-INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml reason: use-sdk injection requested
-INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml
-INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml
+INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml reason: use-sdk injection requested
+INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml
+INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml
 	android:targetSdkVersion
-		INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml
+		INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml
 	android:minSdkVersion
-		INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest11714760194789628882.xml
+		INJECTED from G:\Users\Administrator\Documents\College2\BuildTest\CockpitMap\core\network\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9031248720812778061.xml

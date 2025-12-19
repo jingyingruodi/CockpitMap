@@ -37,13 +37,12 @@ android {
 }
 
 dependencies {
-    // 依赖 core 模块
     implementation(project(":core:common"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:model"))
-    implementation(project(":core:data")) // 新增：必须依赖 data 模块才能访问 Repository
+    implementation(project(":core:data"))
+    implementation(project(":core:network")) // 补全网络依赖，确保 SearchDataSource 可访问
     
-    // 依赖 feature 模块
     implementation(project(":feature:map"))
     implementation(project(":feature:routing"))
 
