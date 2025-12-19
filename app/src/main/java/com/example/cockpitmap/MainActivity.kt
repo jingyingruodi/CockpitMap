@@ -41,11 +41,6 @@ import java.util.UUID
 
 /**
  * 应用程序主 Activity。
- * 
- * [职责描述]：
- * 1. 初始化系统环境与 SDK。
- * 2. 协调各个 Feature 模块的交互。
- * 3. 管理全局导航预览状态。
  */
 class MainActivity : ComponentActivity() {
     
@@ -57,7 +52,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 隐私协议初始化
         MapsInitializer.updatePrivacyShow(applicationContext, true, true)
         MapsInitializer.updatePrivacyAgree(applicationContext, true)
         ServiceSettings.updatePrivacyShow(applicationContext, true, true)
@@ -113,7 +107,6 @@ fun MainScreen(
     var mapController by remember { mutableStateOf<MapController?>(null) }
     var showSaveFormByLocation by remember { mutableStateOf<GeoLocation?>(null) }
     
-    // UI 提示状态
     var showStyleHint by remember { mutableStateOf(false) }
     var styleHintText by remember { mutableStateOf("") }
     var showFavorites by remember { mutableStateOf(false) }
@@ -123,13 +116,13 @@ fun MainScreen(
     val savedLocations by favRepo.savedLocations.collectAsState(initial = emptyList())
     val routeInfo by routingViewModel.routeResult.collectAsState()
     val isCalculating by routingViewModel.isCalculating.collectAsState()
+    val isNavigating by routingViewModel.isNavigating.collectAsState()
     val currentLoc by mapViewModel.currentLocation.collectAsState()
     
     val styles = CustomMapStyle.entries.toTypedArray()
     val styleNames = listOf("标准模式", "卫星模式", "夜间模式", "导航模式")
     var currentStyleIndex by remember { mutableIntStateOf(0) }
 
-    // 观察路径规划结果：仅处理画线
     LaunchedEffect(routeInfo) {
         if (routeInfo != null) {
             mapController?.drawRoute(routeInfo!!)
@@ -139,7 +132,7 @@ fun MainScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 1. 地图层
+        // 1. 地图渲染
         MapRenderScreen(
             viewModel = mapViewModel,
             modifier = Modifier.fillMaxSize(),
@@ -149,38 +142,52 @@ fun MainScreen(
             }
         )
 
-        // 2. 常用地址列表
-        FavoriteListOverlay(
-            visible = showFavorites,
-            locations = savedLocations,
-            onItemClick = { loc ->
-                mapController?.showMarker(loc.location)
-                showFavorites = false
-                pendingNavigationLocation = loc.location
-                routingViewModel.clearRoute()
-            },
-            onToggle = { showFavorites = !showFavorites },
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp)
-        )
-
-        // 3. 搜索层
-        SearchScreen(
-            viewModel = searchViewModel,
-            onSuggestionClick = { suggestion ->
-                suggestion.location?.let { dest ->
-                    mapController?.showMarker(dest)
-                    searchViewModel.clearSearch()
-                    pendingNavigationLocation = dest
-                    routingViewModel.clearRoute()
+        // 2. 导航进行中的顶部面板
+        if (isNavigating) {
+            NavigationDashboard(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
+                onExit = {
+                    routingViewModel.stopNavigation()
+                    mapController?.setFollowingMode(false)
+                    mapController?.clearRoute()
+                    pendingNavigationLocation = null
                 }
-            },
-            modifier = Modifier.align(Alignment.TopStart).padding(4.dp)
-        )
+            )
+        }
 
-        // 4. 底部交互控制层
+        // 3. 非导航模式下的 UI (搜索与收藏)
+        if (!isNavigating) {
+            FavoriteListOverlay(
+                visible = showFavorites,
+                locations = savedLocations,
+                onItemClick = { loc ->
+                    mapController?.showMarker(loc.location)
+                    showFavorites = false
+                    pendingNavigationLocation = loc.location
+                    routingViewModel.clearRoute()
+                },
+                onToggle = { showFavorites = !showFavorites },
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp)
+            )
+
+            SearchScreen(
+                viewModel = searchViewModel,
+                onSuggestionClick = { suggestion ->
+                    suggestion.location?.let { dest ->
+                        mapController?.showMarker(dest)
+                        searchViewModel.clearSearch()
+                        pendingNavigationLocation = dest
+                        routingViewModel.clearRoute()
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp)
+            )
+        }
+
+        // 4. 底部交互层
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
-            // 前往目的地确认
-            if (pendingNavigationLocation != null && routeInfo == null && !isCalculating) {
+            // A. 前往确认
+            if (!isNavigating && pendingNavigationLocation != null && routeInfo == null && !isCalculating) {
                 GoToConfirmationCard(
                     location = pendingNavigationLocation!!,
                     onConfirm = {
@@ -188,9 +195,7 @@ fun MainScreen(
                             routingViewModel.planRoute(start, pendingNavigationLocation!!)
                         }
                     },
-                    onSave = {
-                        showSaveFormByLocation = pendingNavigationLocation
-                    },
+                    onSave = { showSaveFormByLocation = pendingNavigationLocation },
                     onCancel = {
                         pendingNavigationLocation = null
                         mapController?.clearMarkers()
@@ -198,17 +203,20 @@ fun MainScreen(
                 )
             }
 
-            // 加载提示 (使用 DesignSystem 统一组件)
+            // B. 规划中提示
             CockpitLoadingHint(
                 visible = isCalculating,
                 text = "正在规划最佳路线..."
             )
 
-            // 导航预览
-            if (routeInfo != null && !isCalculating) {
+            // C. 路径预览 (点击“开始导航”真正生效的地方)
+            if (!isNavigating && routeInfo != null && !isCalculating) {
                 RoutePreviewCard(
                     routeInfo = routeInfo!!,
-                    onStartNavigation = { /* 后续集成正式导航系统 */ },
+                    onStartNavigation = {
+                        routingViewModel.startNavigation()
+                        mapController?.setFollowingMode(true)
+                    },
                     onCancel = { 
                         routingViewModel.clearRoute()
                         pendingNavigationLocation = null
@@ -217,7 +225,7 @@ fun MainScreen(
             }
         }
 
-        // 5. 保存表单弹窗
+        // 5. 保存表单
         if (showSaveFormByLocation != null) {
             SaveLocationDialog(
                 location = showSaveFormByLocation!!,
@@ -231,12 +239,14 @@ fun MainScreen(
             )
         }
 
-        // 6. 顶部全局提示 (使用 DesignSystem 统一组件)
-        CockpitHintLayer(
-            visible = showStyleHint,
-            text = styleHintText,
-            modifier = Modifier.padding(top = 60.dp)
-        )
+        // 6. 顶部样式提示 (仅在非导航时显示)
+        if (!isNavigating) {
+            CockpitHintLayer(
+                visible = showStyleHint,
+                text = styleHintText,
+                modifier = Modifier.padding(top = 60.dp)
+            )
+        }
         
         // 7. 右侧快捷操作
         QuickActions(

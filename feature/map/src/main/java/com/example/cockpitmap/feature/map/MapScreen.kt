@@ -38,12 +38,7 @@ import com.example.cockpitmap.core.model.MapController
 import com.example.cockpitmap.core.model.RouteInfo
 
 /**
- * [HMI 地图渲染组件]
- * 
- * 职责：
- * 1. 负责高德地图 SDK 的生命周期管理与渲染。
- * 2. 实现 [MapController] 接口，为其他业务模块提供地图操作能力。
- * 3. 处理高德坐标系与系统位置服务的同步。
+ * 车载地图渲染核心组件。
  */
 @Composable
 fun MapRenderScreen(
@@ -63,6 +58,18 @@ fun MapRenderScreen(
         MapsInitializer.updatePrivacyShow(context, true, true)
         MapsInitializer.updatePrivacyAgree(context, true)
         MapView(context).apply { onCreate(null) }
+    }
+
+    LaunchedEffect(initialLocation) {
+        if (initialLocation != null && !hasInitialAutoCenter) {
+            mapView.map.moveCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(initialLocation.latitude, initialLocation.longitude), 
+                    15f
+                )
+            )
+            hasInitialAutoCenter = true
+        }
     }
 
     DisposableEffect(lifecycle) {
@@ -104,7 +111,7 @@ fun MapRenderScreen(
 
         setupNativeTracking(nativeManager, nativeListener)
         aMap.setLocationSource(customSource)
-        aMap.isMyLocationEnabled = true
+        aMap.setMyLocationEnabled(true)
 
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -130,7 +137,7 @@ fun MapRenderScreen(
             modifier = Modifier.fillMaxSize(),
             update = { view ->
                 setupMapStyles(view.map)
-                onControllerReady(AMapController(view.map, initialLocation))
+                onControllerReady(AMapController(view.map))
             }
         )
 
@@ -167,17 +174,16 @@ private fun setupMapStyles(aMap: AMap) {
         radiusFillColor(AndroidColor.TRANSPARENT)
     }
     aMap.setMyLocationStyle(style)
-    aMap.uiSettings.isZoomControlsEnabled = false
-    aMap.uiSettings.isCompassEnabled = true
-    aMap.mapType = AMap.MAP_TYPE_NORMAL
+    aMap.getUiSettings().setZoomControlsEnabled(false)
+    aMap.getUiSettings().setCompassEnabled(true)
+    aMap.setMapType(AMap.MAP_TYPE_NORMAL)
 }
 
 /**
- * [MapController] 的高德 SDK 具体实现。
+ * [MapController] 实现类。
  */
 class AMapController(
-    private val aMap: AMap,
-    private val initialLocation: GeoLocation? = null
+    private val aMap: AMap
 ) : MapController {
     
     private var currentSearchMarker: Marker? = null
@@ -206,8 +212,6 @@ class AMapController(
                 }
             }
         }
-        // 使用参数以消除警告
-        Log.d("MapController", "Initial location provided: ${initialLocation?.name ?: "None"}")
     }
 
     override fun zoomIn() { aMap.animateCamera(CameraUpdateFactory.zoomIn()) }
@@ -221,7 +225,6 @@ class AMapController(
 
     override fun showMarker(location: GeoLocation) {
         currentSearchMarker?.remove()
-        
         val markerOptions = MarkerOptions().apply {
             position(LatLng(location.latitude, location.longitude))
             title(location.name)
@@ -239,7 +242,6 @@ class AMapController(
 
     override fun drawRoute(route: RouteInfo) {
         currentPolyline?.remove()
-        
         if (route.polyline.isEmpty()) return
 
         val points = route.polyline.map { LatLng(it.latitude, it.longitude) }
@@ -249,7 +251,6 @@ class AMapController(
             color(AndroidColor.parseColor("#3498db"))
             useGradient(true)
         }
-            
         currentPolyline = aMap.addPolyline(options)
         
         val boundsBuilder = LatLngBounds.Builder()
@@ -269,9 +270,40 @@ class AMapController(
         }
     }
     
-    override fun setMapStyle(type: Int) { aMap.mapType = type }
+    override fun setMapStyle(type: Int) { aMap.setMapType(type) }
 
     override fun setOnMarkerLongClickListener(onLongClick: (GeoLocation) -> Unit) {
         this.onMarkerLongClickListener = onLongClick
+    }
+
+    override fun setFollowingMode(enabled: Boolean) {
+        if (enabled) {
+            // [核心修复]：强制切换为位置、视角双跟随模式
+            val style = MyLocationStyle().apply {
+                // LOCATION_TYPE_MAP_ROTATE 会强制地图中心保持在自车坐标，且随车头旋转
+                myLocationType(MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)
+                showMyLocation(true)
+                strokeColor(AndroidColor.TRANSPARENT)
+                radiusFillColor(AndroidColor.TRANSPARENT)
+            }
+            aMap.setMyLocationStyle(style)
+            
+            // 立即对齐当前位置
+            val loc = aMap.myLocation
+            if (loc != null && loc.latitude != 0.0) {
+                aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 18f))
+            }
+            aMap.animateCamera(CameraUpdateFactory.changeTilt(45f)) // 设置导航视角倾斜
+        } else {
+            // 回到普通预览模式
+            val style = MyLocationStyle().apply {
+                myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
+                showMyLocation(true)
+                strokeColor(AndroidColor.TRANSPARENT)
+                radiusFillColor(AndroidColor.TRANSPARENT)
+            }
+            aMap.setMyLocationStyle(style)
+            aMap.animateCamera(CameraUpdateFactory.changeTilt(0f)) // 恢复平视
+        }
     }
 }

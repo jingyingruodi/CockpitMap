@@ -3,10 +3,8 @@ package com.example.cockpitmap.core.model
 /**
  * 地图操作控制接口。
  * 
- * [下沉说明]：
- * 按照 [MODULES.md] 规范，该接口定义 in core:model 模块。
- * 目的：允许 :feature:routing 等模块在不依赖 :feature:map 模块的情况下，
- * 能够调用地图控制功能（如 moveTo），实现模块间彻底解耦。
+ * [职责描述]：
+ * 定义跨模块的地图控制能力，包括视角切换、标注管理及路径绘制。
  */
 interface MapController {
     /** 放大 */
@@ -29,4 +27,10 @@ interface MapController {
     fun setMapStyle(type: Int)
     /** 设置标记点长按监听 */
     fun setOnMarkerLongClickListener(onLongClick: (GeoLocation) -> Unit)
+    
+    /** 
+     * 切换导航跟随模式。
+     * @param enabled true: 开启车头向上、3D 倾斜视角；false: 回到正北朝上平视。
+     */
+    fun setFollowingMode(enabled: Boolean)
 }
