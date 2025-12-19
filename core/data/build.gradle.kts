@@ -27,5 +27,8 @@ dependencies {
     // DataStore
     implementation(libs.androidx.datastore.preferences)
     
+    // JSON Serialization
+    implementation("com.google.code.gson:gson:2.11.0")
+    
     implementation(libs.androidx.core.ktx)
 }

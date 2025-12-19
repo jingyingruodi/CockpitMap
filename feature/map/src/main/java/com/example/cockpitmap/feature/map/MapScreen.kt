@@ -41,13 +41,13 @@ import com.example.cockpitmap.core.model.MapController
 /**
  * [HMI 地图渲染组件 - 重构标准版]
  * 
- * 变更：
- * 1. 引入 MapViewModel 管理核心状态。
- * 2. 遵循 UDF 数据流。
+ * 职责：
+ * 1. 负责高德地图 SDK 的生命周期管理与渲染。
+ * 2. 实现 [MapController] 接口暴露给外部。
  */
 @Composable
 fun MapRenderScreen(
-    viewModel: MapViewModel, // 注入 ViewModel
+    viewModel: MapViewModel,
     modifier: Modifier = Modifier,
     initialLocation: GeoLocation? = null,
     onLocationChanged: (GeoLocation) -> Unit = {},
@@ -56,7 +56,6 @@ fun MapRenderScreen(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     
-    // 状态从 ViewModel 收集
     val isLocationLocked by viewModel.isLocationLocked.collectAsStateWithLifecycle()
     var hasInitialAutoCenter by remember { mutableStateOf(false) } 
 
@@ -87,7 +86,7 @@ fun MapRenderScreen(
             override fun onLocationChanged(location: Location) {
                 if (location.latitude != 0.0) {
                     val geo = GeoLocation(location.latitude, location.longitude, "系统位置")
-                    viewModel.updateLocation(geo) // 更新 ViewModel 状态
+                    viewModel.updateLocation(geo)
                     customSource.push(location)
                     onLocationChanged(geo)
                     
@@ -172,19 +171,80 @@ private fun setupMapStyles(aMap: AMap) {
     aMap.mapType = AMap.MAP_TYPE_NIGHT
 }
 
+/**
+ * 高德地图控制器实现类。
+ */
 class AMapController(private val aMap: AMap) : MapController {
+    
+    private var currentSearchMarker: Marker? = null
+    private var onMarkerLongClickListener: ((GeoLocation) -> Unit)? = null
+
+    init {
+        aMap.setOnMarkerClickListener { marker ->
+            marker.showInfoWindow()
+            true
+        }
+        
+        // 模拟长按 Marker：高德 SDK 对 Marker 只有 Click 监听，
+        // 这里我们通过 AMap 的 OnMarkerClickListener 配合长按地图逻辑或者
+        // 简单的点击触发（车载场景下点击通常即为选中，长按地图也可以）。
+        // 但为了符合用户要求，我们监听地图长按并在 Marker 附近时触发。
+        aMap.setOnMapLongClickListener { latLng ->
+            currentSearchMarker?.let { marker ->
+                val markerLatLng = marker.position
+                // 如果长按位置在 Marker 附近（约 100 米内）
+                val results = FloatArray(1)
+                Location.distanceBetween(
+                    latLng.latitude, latLng.longitude,
+                    markerLatLng.latitude, markerLatLng.longitude,
+                    results
+                )
+                if (results[0] < 100) {
+                    onMarkerLongClickListener?.invoke(
+                        GeoLocation(markerLatLng.latitude, markerLatLng.longitude, marker.title ?: "")
+                    )
+                }
+            }
+        }
+    }
+
     override fun zoomIn() { aMap.animateCamera(CameraUpdateFactory.zoomIn()) }
     override fun zoomOut() { aMap.animateCamera(CameraUpdateFactory.zoomOut()) }
+    
     override fun moveTo(location: GeoLocation) {
         if (location.latitude != 0.0) {
             aMap.animateCamera(CameraUpdateFactory.newLatLng(LatLng(location.latitude, location.longitude)))
         }
     }
+
+    override fun showMarker(location: GeoLocation) {
+        currentSearchMarker?.remove()
+        
+        val markerOptions = MarkerOptions().apply {
+            position(LatLng(location.latitude, location.longitude))
+            title(location.name)
+            icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
+            draggable(false)
+        }
+        currentSearchMarker = aMap.addMarker(markerOptions)
+        aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(location.latitude, location.longitude), 15f))
+    }
+
+    override fun clearMarkers() {
+        currentSearchMarker?.remove()
+        currentSearchMarker = null
+    }
+
     override fun locateMe() {
         val loc = aMap.myLocation
         if (loc != null && loc.latitude != 0.0) {
             aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 15f))
         }
     }
+    
     override fun setMapStyle(type: Int) { aMap.mapType = type }
+
+    override fun setOnMarkerLongClickListener(onLongClick: (GeoLocation) -> Unit) {
+        this.onMarkerLongClickListener = onLongClick
+    }
 }

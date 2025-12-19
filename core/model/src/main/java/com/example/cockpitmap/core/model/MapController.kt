@@ -15,8 +15,14 @@ interface MapController {
     fun zoomOut()
     /** 镜头瞬移/平移至指定坐标 */
     fun moveTo(location: GeoLocation)
+    /** 在地图上显示一个标记点（如搜索结果） */
+    fun showMarker(location: GeoLocation)
+    /** 清除所有标记点 */
+    fun clearMarkers()
     /** 触发“回到我的位置” */
     fun locateMe()
     /** 设置地图显示样式（NORMAL, NIGHT, SATELLITE, NAVI） */
     fun setMapStyle(type: Int)
+    /** 设置标记点长按监听 */
+    fun setOnMarkerLongClickListener(onLongClick: (GeoLocation) -> Unit)
 }
