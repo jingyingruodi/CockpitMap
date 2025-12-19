@@ -36,6 +36,9 @@ import com.example.cockpitmap.core.designsystem.CockpitSurface
 import com.example.cockpitmap.core.model.GeoLocation
 import com.example.cockpitmap.core.model.MapController
 import com.example.cockpitmap.core.model.RouteInfo
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 车载地图渲染核心组件。
@@ -50,6 +53,7 @@ fun MapRenderScreen(
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val scope = rememberCoroutineScope()
     
     val isLocationLocked by viewModel.isLocationLocked.collectAsStateWithLifecycle()
     var hasInitialAutoCenter by remember { mutableStateOf(false) } 
@@ -60,7 +64,6 @@ fun MapRenderScreen(
         MapView(context).apply { onCreate(null) }
     }
 
-    // 初始化位置处理
     LaunchedEffect(initialLocation) {
         if (initialLocation != null && !hasInitialAutoCenter) {
             mapView.map.moveCamera(
@@ -138,7 +141,7 @@ fun MapRenderScreen(
             modifier = Modifier.fillMaxSize(),
             update = { view ->
                 setupMapStyles(view.map)
-                onControllerReady(AMapController(view.map))
+                onControllerReady(AMapController(view.map, scope))
             }
         )
 
@@ -177,19 +180,23 @@ private fun setupMapStyles(aMap: AMap) {
     aMap.setMyLocationStyle(style)
     aMap.getUiSettings().setZoomControlsEnabled(false)
     aMap.getUiSettings().setCompassEnabled(true)
-    // 默认保持为普通模式
 }
 
 /**
  * [MapController] 实现类。
  */
 class AMapController(
-    private val aMap: AMap
+    private val aMap: AMap,
+    private val scope: kotlinx.coroutines.CoroutineScope
 ) : MapController {
     
     private var currentSearchMarker: Marker? = null
     private var currentPolyline: Polyline? = null
     private var onMarkerLongClickListener: ((GeoLocation) -> Unit)? = null
+    
+    // 自动回归逻辑相关的变量
+    private var isFollowingModeRequested = false
+    private var autoReFollowJob: Job? = null
 
     init {
         aMap.setOnMarkerClickListener { marker ->
@@ -211,6 +218,47 @@ class AMapController(
                         GeoLocation(markerLatLng.latitude, markerLatLng.longitude, marker.title ?: "")
                     )
                 }
+            }
+        }
+
+        // [核心优化]：监听镜头移动，实现手动干预后暂停跟随
+        aMap.setOnCameraChangeListener(object : AMap.OnCameraChangeListener {
+            override fun onCameraChange(p0: CameraPosition?) {}
+            override fun onCameraChangeFinish(position: CameraPosition?) {
+                // reason 1 表示用户手动手势操作（拖拽、缩放、旋转）
+                // 虽然 SDK 回调可能因版本略有不同，但我们通过状态判定
+                if (isFollowingModeRequested) {
+                    startAutoReFollowTimer()
+                }
+            }
+        })
+        
+        // 专门监听触摸事件来判断“用户干预”
+        aMap.setOnMapTouchListener { event ->
+            if (isFollowingModeRequested) {
+                // 用户一碰地图，立即降级为普通定位模式，防止地图“抢镜头”
+                pauseFollowing()
+            }
+        }
+    }
+
+    private fun pauseFollowing() {
+        autoReFollowJob?.cancel()
+        val style = MyLocationStyle().apply {
+            myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
+            showMyLocation(true)
+            strokeColor(AndroidColor.TRANSPARENT)
+            radiusFillColor(AndroidColor.TRANSPARENT)
+        }
+        aMap.setMyLocationStyle(style)
+    }
+
+    private fun startAutoReFollowTimer() {
+        autoReFollowJob?.cancel()
+        autoReFollowJob = scope.launch {
+            delay(5000) // 5 秒无操作自动恢复
+            if (isFollowingModeRequested) {
+                setFollowingMode(true)
             }
         }
     }
@@ -278,40 +326,33 @@ class AMapController(
     }
 
     override fun setFollowingMode(enabled: Boolean) {
+        isFollowingModeRequested = enabled
         if (enabled) {
-            // 1. 切换为导航专用样式 (MAP_TYPE_NAVI)
             aMap.setMapType(AMap.MAP_TYPE_NAVI)
-            
-            // 2. 配置强锁定跟随模式
             val style = MyLocationStyle().apply {
-                // LOCATION_TYPE_MAP_ROTATE: 连续定位、蓝点带动地图移动，且地图始终随车头旋转
                 myLocationType(MyLocationStyle.LOCATION_TYPE_MAP_ROTATE)
                 showMyLocation(true)
                 strokeColor(AndroidColor.TRANSPARENT)
                 radiusFillColor(AndroidColor.TRANSPARENT)
-                // 导航蓝点间隔 1s 更新位置，保证平滑性
                 interval(1000)
             }
             aMap.setMyLocationStyle(style)
             
-            // 3. 立即将相机对齐到当前坐标，并设置 3D 视角
             val loc = aMap.myLocation
             if (loc != null && loc.latitude != 0.0) {
                 val cameraUpdate = CameraUpdateFactory.newCameraPosition(
                     CameraPosition.builder()
                         .target(LatLng(loc.latitude, loc.longitude))
-                        .zoom(18f)   // 导航缩放级别
-                        .tilt(45f)   // 倾斜视角
-                        .bearing(loc.bearing) // 初始朝向同步
+                        .zoom(18f)
+                        .tilt(45f)
+                        .bearing(loc.bearing)
                         .build()
                 )
                 aMap.animateCamera(cameraUpdate)
             }
         } else {
-            // 1. 恢复普通地图样式
+            autoReFollowJob?.cancel()
             aMap.setMapType(AMap.MAP_TYPE_NORMAL)
-            
-            // 2. 恢复普通定位模式 (LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER: 蓝点转地图不转)
             val style = MyLocationStyle().apply {
                 myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
                 showMyLocation(true)
@@ -319,8 +360,6 @@ class AMapController(
                 radiusFillColor(AndroidColor.TRANSPARENT)
             }
             aMap.setMyLocationStyle(style)
-            
-            // 3. 恢复平视视角
             aMap.animateCamera(CameraUpdateFactory.changeTilt(0f))
         }
     }
