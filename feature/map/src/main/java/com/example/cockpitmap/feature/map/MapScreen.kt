@@ -2,6 +2,7 @@ package com.example.cockpitmap.feature.map
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Color as AndroidColor
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -17,17 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.amap.api.location.AMapLocation
-import com.amap.api.location.AMapLocationClient
-import com.amap.api.location.AMapLocationClientOption
-import com.amap.api.location.AMapLocationListener
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.LocationSource
@@ -37,13 +35,15 @@ import com.amap.api.maps.model.*
 import com.example.cockpitmap.core.designsystem.CockpitSurface
 import com.example.cockpitmap.core.model.GeoLocation
 import com.example.cockpitmap.core.model.MapController
+import com.example.cockpitmap.core.model.RouteInfo
 
 /**
- * [HMI 地图渲染组件 - 重构标准版]
+ * [HMI 地图渲染组件]
  * 
  * 职责：
  * 1. 负责高德地图 SDK 的生命周期管理与渲染。
- * 2. 实现 [MapController] 接口暴露给外部。
+ * 2. 实现 [MapController] 接口，为其他业务模块提供地图操作能力。
+ * 3. 处理高德坐标系与系统位置服务的同步。
  */
 @Composable
 fun MapRenderScreen(
@@ -96,6 +96,7 @@ fun MapRenderScreen(
                     }
                 }
             }
+            @Deprecated("Deprecated in Java")
             override fun onStatusChanged(p0: String?, p1: Int, p2: Bundle?) {}
             override fun onProviderEnabled(p0: String) {}
             override fun onProviderDisabled(p0: String) {}
@@ -129,7 +130,7 @@ fun MapRenderScreen(
             modifier = Modifier.fillMaxSize(),
             update = { view ->
                 setupMapStyles(view.map)
-                onControllerReady(AMapController(view.map))
+                onControllerReady(AMapController(view.map, initialLocation))
             }
         )
 
@@ -162,22 +163,25 @@ private fun setupMapStyles(aMap: AMap) {
     val style = MyLocationStyle().apply {
         myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER)
         showMyLocation(true)
-        strokeColor(Color.Transparent.hashCode())
-        radiusFillColor(Color.Transparent.hashCode())
+        strokeColor(AndroidColor.TRANSPARENT)
+        radiusFillColor(AndroidColor.TRANSPARENT)
     }
     aMap.setMyLocationStyle(style)
     aMap.uiSettings.isZoomControlsEnabled = false
     aMap.uiSettings.isCompassEnabled = true
-    // 默认修改为标准模式
     aMap.mapType = AMap.MAP_TYPE_NORMAL
 }
 
 /**
- * 高德地图控制器实现类。
+ * [MapController] 的高德 SDK 具体实现。
  */
-class AMapController(private val aMap: AMap) : MapController {
+class AMapController(
+    private val aMap: AMap,
+    private val initialLocation: GeoLocation? = null
+) : MapController {
     
     private var currentSearchMarker: Marker? = null
+    private var currentPolyline: Polyline? = null
     private var onMarkerLongClickListener: ((GeoLocation) -> Unit)? = null
 
     init {
@@ -202,6 +206,8 @@ class AMapController(private val aMap: AMap) : MapController {
                 }
             }
         }
+        // 使用参数以消除警告
+        Log.d("MapController", "Initial location provided: ${initialLocation?.name ?: "None"}")
     }
 
     override fun zoomIn() { aMap.animateCamera(CameraUpdateFactory.zoomIn()) }
@@ -229,6 +235,31 @@ class AMapController(private val aMap: AMap) : MapController {
     override fun clearMarkers() {
         currentSearchMarker?.remove()
         currentSearchMarker = null
+    }
+
+    override fun drawRoute(route: RouteInfo) {
+        currentPolyline?.remove()
+        
+        if (route.polyline.isEmpty()) return
+
+        val points = route.polyline.map { LatLng(it.latitude, it.longitude) }
+        val options = PolylineOptions().apply {
+            addAll(points)
+            width(20f)
+            color(AndroidColor.parseColor("#3498db"))
+            useGradient(true)
+        }
+            
+        currentPolyline = aMap.addPolyline(options)
+        
+        val boundsBuilder = LatLngBounds.Builder()
+        points.forEach { boundsBuilder.include(it) }
+        aMap.animateCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 120))
+    }
+
+    override fun clearRoute() {
+        currentPolyline?.remove()
+        currentPolyline = null
     }
 
     override fun locateMe() {

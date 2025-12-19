@@ -30,5 +30,8 @@ dependencies {
     // JSON Serialization
     implementation("com.google.code.gson:gson:2.11.0")
     
+    // 高德 Search SDK (路径规划核心依赖)
+    implementation(libs.amap.search)
+    
     implementation(libs.androidx.core.ktx)
 }
