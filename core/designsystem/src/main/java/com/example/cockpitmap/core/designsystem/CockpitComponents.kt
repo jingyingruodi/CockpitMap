@@ -1,22 +1,21 @@
 package com.example.cockpitmap.core.designsystem
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Surface
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * 车机专用标准悬浮卡片。
  * 
- * [HMI 规范]：
- * - 背景：默认采用半透明深色 (alpha 0.7) 以保证在地图背景上的可读性。
- * - 圆角：默认 24dp，符合圆润的现代化 HMI 视觉趋势。
+ * [职责描述]：
+ * 提供符合车载 HMI 规范的半透明深色容器，具备大圆角和标准内边距。
  */
 @Composable
 fun CockpitSurface(
@@ -32,7 +31,7 @@ fun CockpitSurface(
         color = color,
         contentColor = contentColor
     ) {
-        Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             content()
         }
     }
@@ -40,6 +39,9 @@ fun CockpitSurface(
 
 /**
  * 车机专用标准悬浮按钮。
+ * 
+ * [职责描述]：
+ * 提供大点击区域的悬浮按钮，支持自定义容器颜色。
  */
 @Composable
 fun CockpitFloatingButton(
@@ -52,13 +54,60 @@ fun CockpitFloatingButton(
     Button(
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)
+        contentPadding = PaddingValues(0.dp)
     ) {
         icon()
+    }
+}
+
+/**
+ * 车机顶部全局提示层。
+ * 
+ * [职责描述]：
+ * 统一展示系统级提示信息（如样式切换、保存成功等）。
+ */
+@Composable
+fun CockpitHintLayer(
+    visible: Boolean,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        AnimatedVisibility(visible = visible) {
+            CockpitSurface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ) {
+                Text(text = text, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+/**
+ * 车机全局加载遮罩。
+ * 
+ * [职责描述]：
+ * 提供统一的业务加载（如路径规划中）的视觉反馈。
+ */
+@Composable
+fun CockpitLoadingHint(
+    visible: Boolean,
+    text: String = "正在处理...",
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(visible = visible) {
+        CockpitSurface(modifier = modifier) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(text = text, fontSize = 13.sp)
+            }
+        }
     }
 }
