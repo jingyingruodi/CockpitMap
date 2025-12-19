@@ -34,7 +34,7 @@
         
         <meta-data
             android:name="com.amap.api.v2.apikey"
-            android:value="YOUR_AMAP_KEY_HERE" />
+            android:value="4eeab95822b6a0e53f2835fcc4d87fc1" />
 
         <!-- [MIUI 专项加固]：声明前台服务类型，防止系统休眠定位引擎 -->
         <service 
